@@ -1,0 +1,9 @@
+# 运行依赖
+streamlit>=1.40
+pandas>=2.2
+pydantic>=2.7
+python-dotenv>=1.0
+openai>=1.40
+
+# 测试
+pytest>=8.0

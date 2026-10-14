@@ -1,0 +1,19 @@
+# 虚拟环境
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# 密钥与机密（严禁提交）
+.env
+.streamlit/secrets.toml
+
+# 运行态数据：分析快照、用户上传的真实数据
+runtime/
+
+# 编辑器
+.vscode/
+.idea/
