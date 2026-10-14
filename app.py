@@ -52,7 +52,9 @@ def current_fingerprint() -> dict:
 
 def render_sidebar() -> str:
     st.sidebar.title("AI 海外达人营销助手")
-    st.sidebar.caption("Phase 1：规则链路端到端（未接入 API 也能跑）")
+    st.sidebar.caption(
+        f"版本 {snapshot.APP_VERSION} · Phase 1：规则链路端到端（未接入 API 也能跑）"
+    )
     step = st.sidebar.radio("流程", STEPS)
     st.sidebar.divider()
     if st.sidebar.button("清空当前会话"):
@@ -244,20 +246,8 @@ def step_rules() -> None:
         return
 
     config = st.session_state.config
-    with st.expander("规则配置（权重为项目初始假设，可调整）", expanded=False):
-        cols = st.columns(len(config.weights))
-        new_weights = {}
-        for col, (name, weight) in zip(cols, config.weights.items()):
-            with col:
-                new_weights[name] = st.number_input(
-                    name, min_value=0.0, max_value=1.0, value=float(weight), step=0.05
-                )
-        if st.button("保存权重"):
-            config.weights = new_weights
-            st.session_state.config = config
-            st.success("权重已更新（会改变 rule_config_hash）。")
 
-    if st.button("运行规则初筛", type="primary"):
+    if st.button("运行规则初筛", type="primary", key="run_rules"):
         assessments = rule_engine.evaluate_dataset(dataset.creators, task, config)
         run_id = snapshot.new_run_id()
         meta = snapshot.build_meta(
@@ -275,7 +265,25 @@ def step_rules() -> None:
         st.session_state.assessments = assessments
         st.session_state.run_meta = meta
         st.session_state.last_run_meta = snapshot.read_run(run_dir)
-        st.success(f"规则初筛完成，快照已写入 {run_dir}")
+        st.session_state["rules_flash"] = f"规则初筛完成，快照已写入 runtime/runs/{run_id}"
+        st.rerun()
+
+    rules_flash = st.session_state.pop("rules_flash", None)
+    if rules_flash:
+        st.success(rules_flash)
+
+    with st.expander("规则配置（权重为项目初始假设，可调整）", expanded=False):
+        cols = st.columns(len(config.weights))
+        new_weights = {}
+        for col, (name, weight) in zip(cols, config.weights.items()):
+            with col:
+                new_weights[name] = st.number_input(
+                    name, min_value=0.0, max_value=1.0, value=float(weight), step=0.05
+                )
+        if st.button("保存权重"):
+            config.weights = new_weights
+            st.session_state.config = config
+            st.success("权重已更新（会改变 rule_config_hash）。")
 
     assessments = st.session_state.assessments
     if not assessments:

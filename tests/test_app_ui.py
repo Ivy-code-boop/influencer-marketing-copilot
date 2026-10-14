@@ -12,6 +12,7 @@ from pathlib import Path
 from streamlit.testing.v1 import AppTest
 
 from src import rule_engine
+from src import snapshot
 from src.data_loader import DEMO_TASK, load_demo_dataset
 from src.models import RuleConfig
 
@@ -107,3 +108,25 @@ def test_export_page_ready_after_rules_run() -> None:
     at.run()
     at.sidebar.radio[0].set_value("⑤ 导出").run()
     assert not at.exception, [e.value for e in at.exception]
+
+
+def test_sidebar_shows_version_so_we_can_tell_which_code_is_running() -> None:
+    at = new_app().run()
+    captions = " ".join(c.value for c in at.sidebar.caption)
+    assert snapshot.APP_VERSION in captions, captions
+
+
+def test_rules_step_run_button_is_first_and_writes_snapshot(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(snapshot, "RUNS_DIR", tmp_path / "runs")
+    at = new_app()
+    at.session_state["dataset"] = load_demo_dataset()
+    at.session_state["task"] = DEMO_TASK
+    at.run()
+    at.sidebar.radio[0].set_value("③ 规则初筛").run()
+    assert not at.exception, [e.value for e in at.exception]
+    assert button_labels(at)[0] == "运行规则初筛", button_labels(at)
+    at = click_button(at, "运行规则初筛")
+    assert not at.exception, [e.value for e in at.exception]
+    assert at.session_state["assessments"]
+    assert (tmp_path / "runs").exists(), "运行规则初筛必须写下快照"
+    assert any("规则初筛完成" in s.value for s in at.success), [s.value for s in at.success]
