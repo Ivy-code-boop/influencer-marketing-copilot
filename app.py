@@ -77,6 +77,29 @@ def render_sidebar() -> str:
 def step_task() -> None:
     st.header("① 营销任务配置")
     st.caption("必填字段缺失会影响分析范围；可选字段留空只影响对应维度，不会阻止流程。")
+
+    flash = st.session_state.pop("task_flash", None)
+    if flash:
+        level, payload = flash
+        if level == "success":
+            st.success(payload)
+        else:
+            st.error("保存失败：\n\n- " + "\n- ".join(payload))
+
+    saved_task = st.session_state.task
+    if saved_task:
+        active = saved_task.hard_requirements()
+        st.info(
+            f"当前任务：{saved_task.product_name} · {GOAL_LABELS[saved_task.marketing_goal]} · "
+            f"市场 {saved_task.target_market} · 平台 {saved_task.target_platform} · "
+            f"硬性条件 {('、'.join(active)) if active else '未设置'}"
+        )
+        with st.expander("查看任务配置明细（含版本 hash）", expanded=False):
+            st.json(saved_task.model_dump(mode="json"))
+            st.caption(f"task_hash：{snapshot.task_hash(saved_task)}")
+    else:
+        st.warning("还没有保存任务配置。")
+
     preset = st.session_state.task or DEMO_TASK
     with st.form("task_form"):
         col1, col2 = st.columns(2)
@@ -112,7 +135,7 @@ def step_task() -> None:
             required_language = st.text_input("内容语言要求", value=preset.required_language or "")
         with col5:
             required_market = st.text_input("目标地区要求", value=preset.required_market or "")
-        submitted = st.form_submit_button("保存任务配置")
+        submitted = st.form_submit_button("保存任务配置", type="primary")
 
     if submitted:
         errors = []
@@ -123,35 +146,28 @@ def step_task() -> None:
         if not target_market.strip():
             errors.append("目标市场为必填。")
         if errors:
-            for e in errors:
-                st.error(e)
-        else:
-            st.session_state.task = MarketingTask(
-                product_name=product_name.strip(),
-                product_pitch=product_pitch.strip(),
-                target_market=target_market.strip(),
-                target_platform=target_platform,
-                marketing_goal=marketing_goal,
-                target_audience=target_audience.strip() or None,
-                collaboration_type=collaboration_type.strip() or None,
-                budget_range=budget_range.strip() or None,
-                min_follower_count=int(min_followers) if min_followers else None,
-                required_language=required_language.strip() or None,
-                required_market=required_market.strip() or None,
-            )
-            st.success("任务配置已保存。")
-
-    task = st.session_state.task
-    if task:
-        st.markdown("**当前任务**")
-        st.json(task.model_dump(mode="json"))
-        active = task.hard_requirements()
-        if active:
-            st.info(f"已启用的硬性条件：{', '.join(active)}")
-        else:
-            st.info("未设置硬性条件：所有候选都会进入软性打分。")
-    else:
-        st.warning("还没有保存任务配置。")
+            st.session_state["task_flash"] = ("error", errors)
+            st.rerun()
+        new_task = MarketingTask(
+            product_name=product_name.strip(),
+            product_pitch=product_pitch.strip(),
+            target_market=target_market.strip(),
+            target_platform=target_platform,
+            marketing_goal=marketing_goal,
+            target_audience=target_audience.strip() or None,
+            collaboration_type=collaboration_type.strip() or None,
+            budget_range=budget_range.strip() or None,
+            min_follower_count=int(min_followers) if min_followers else None,
+            required_language=required_language.strip() or None,
+            required_market=required_market.strip() or None,
+        )
+        st.session_state.task = new_task
+        st.session_state["task_flash"] = (
+            "success",
+            f"任务配置已保存：{new_task.product_name} · 目标市场 {new_task.target_market} · "
+            f"task_hash {snapshot.task_hash(new_task)}",
+        )
+        st.rerun()
 
 
 def step_data() -> None:
@@ -333,35 +349,84 @@ def step_review() -> None:
         st.warning("请先运行规则初筛。")
         return
     st.caption("人工决定与规则/AI 结果分开保存：修改人工状态不会覆盖规则或 AI 的原始输出。")
-    for a in assessments:
-        if a.group == "excluded":
-            continue
-        decision = st.session_state.decisions.get(a.creator_id, ReviewDecision(creator_id=a.creator_id))
-        col1, col2 = st.columns([1, 3])
-        with col1:
-            status_label = st.selectbox(
-                f"{a.display_name} 的审核状态",
-                list(REVIEW_STATUS_LABELS.keys()),
-                format_func=lambda k: REVIEW_STATUS_LABELS[k],
-                index=list(REVIEW_STATUS_LABELS.keys()).index(decision.status),
-                key=f"status_{a.creator_id}",
-            )
-        with col2:
-            note = st.text_input(
-                f"{a.display_name} 的备注", value=decision.note, key=f"note_{a.creator_id}"
-            )
-        st.session_state.decisions[a.creator_id] = ReviewDecision(
-            creator_id=a.creator_id, status=status_label, note=note
+
+    flash = st.session_state.pop("review_flash", None)
+    if flash:
+        st.success(flash)
+
+    label_to_code = {v: k for k, v in REVIEW_STATUS_LABELS.items()}
+    reviewable = [a for a in assessments if a.group != "excluded"]
+    excluded_count = len(assessments) - len(reviewable)
+
+    col_btn, col_hint = st.columns([1, 3])
+    with col_btn:
+        save_clicked = st.button("保存人工审核结果", type="primary")
+    with col_hint:
+        decided = sum(
+            1
+            for a in reviewable
+            if st.session_state.decisions.get(a.creator_id)
+            and st.session_state.decisions[a.creator_id].status != "pending"
         )
-    if st.button("保存人工审核结果"):
+        st.caption(
+            f"待审核 {len(reviewable) - decided} 条 · 已给结论 {decided} 条"
+            + (f" · 已排除的 {excluded_count} 条不在本列表" if excluded_count else "")
+            + "。保存后写入本次运行的 decisions.json，与规则结果分开存放。"
+        )
+
+    editor_rows = []
+    for a in reviewable:
+        decision = st.session_state.decisions.get(
+            a.creator_id, ReviewDecision(creator_id=a.creator_id)
+        )
+        editor_rows.append(
+            {
+                "达人": a.display_name,
+                "creator_id": a.creator_id,
+                "分组": {"qualified": "通过", "needs_review": "需核实"}[a.group],
+                "规则得分": round(a.weighted_score, 3) if a.weighted_score is not None else None,
+                "审核状态": REVIEW_STATUS_LABELS[decision.status],
+                "备注": decision.note,
+            }
+        )
+    edited = st.data_editor(
+        pd.DataFrame(editor_rows),
+        key="review_editor",
+        hide_index=True,
+        use_container_width=True,
+        disabled=["达人", "creator_id", "分组", "规则得分"],
+        column_config={
+            "审核状态": st.column_config.SelectboxColumn(
+                "审核状态",
+                help="人工结论，与规则/AI 结果分开保存。",
+                options=list(REVIEW_STATUS_LABELS.values()),
+                required=True,
+            ),
+            "备注": st.column_config.TextColumn("备注", help="人工备注，会一并导出。", width="large"),
+        },
+    )
+
+    if save_clicked:
+        decisions: dict[str, ReviewDecision] = {}
+        for row in edited.to_dict("records"):
+            creator_id = str(row["creator_id"])
+            decisions[creator_id] = ReviewDecision(
+                creator_id=creator_id,
+                status=label_to_code.get(str(row["审核状态"]), "pending"),
+                note=str(row.get("备注") or ""),
+            )
+        st.session_state.decisions = decisions
         meta = st.session_state.run_meta
+        target = ""
         if meta and meta.get("run_id"):
             run_dir = snapshot.RUNS_DIR / meta["run_id"]
             snapshot.write_run(
                 snapshot.read_run(run_dir) or meta,
-                decisions={cid: d.model_dump() for cid, d in st.session_state.decisions.items()},
+                decisions={cid: d.model_dump() for cid, d in decisions.items()},
             )
-        st.success("已保存。人工状态与备注写入该次运行的 decisions.json。")
+            target = f"（写入 runtime/runs/{meta['run_id']}/decisions.json）"
+        st.session_state["review_flash"] = f"已保存 {len(decisions)} 条人工审核结果{target}"
+        st.rerun()
 
 
 def step_export() -> None:

@@ -85,3 +85,26 @@ streamlit run app.py                 → 启动成功；/_stcore/health 返回 2
 ## 8. 下一阶段准备做什么
 
 Phase 2：`prompts/creator_analysis_v1.md`、`ai_client.py`（超时/重试/错误分类）、`ai_analyzer.py`（结构化输出 + Pydantic 校验 + 证据字段引用 + 缓存去重 + 单条重试），并先用假客户端完成全部失败分支的离线测试，最后再接真实 API。
+
+## 9. 首次真人使用反馈与修复（2026-10-14）
+
+你第一次点界面时发现两个问题，已修复：
+
+| # | 现象 | 原因 | 修复 |
+|---|---|---|---|
+| 1 | ①任务配置保存后看不到绿色提示 | 提示原先渲染在表单按钮**下方**，需要滚动才能看到；数据其实已经保存成功 | 提示改为「保存 → 立即重跑 → 在页面**顶部**显示」，并新增一行常驻的当前任务摘要 + task_hash |
+| 2 | ④人工审核找不到「保存人工审核结果」按钮 | 原实现把每个达人做成单独一行表单，24 行的保存按钮被挤到页面最底部 | 改成一张可编辑表格（状态下拉 + 备注列），保存按钮移到**表格上方**；保存后同样在顶部给出反馈并写入 `decisions.json` |
+
+为避免再次出现「要用户帮忙试错」的情况，新增了 `tests/test_app_ui.py`，用 Streamlit 官方 AppTest 真实驱动界面逻辑：
+
+| 测试 | 验证内容 |
+|---|---|
+| `test_app_starts_without_exception` | 应用能启动、无异常 |
+| `test_task_step_shows_success_message_after_save` | 保存后确实出现「任务配置已保存」，且 task 写入 session |
+| `test_task_step_blocks_empty_required_fields` | 必填项为空时给出错误提示且不保存 |
+| `test_review_step_has_visible_save_button` | ④页面存在「保存人工审核结果」按钮 |
+| `test_review_step_saves_decisions_and_confirms` | 点击后确实写入人工审核结果并给出反馈 |
+| `test_review_page_excludes_excluded_creators` | 已排除的候选不进入审核列表，且页面注明条数 |
+| `test_export_page_ready_after_rules_run` | ⑤导出页在有结果时可正常渲染 |
+
+测试总数从 31 项增加到 38 项，全部通过。
