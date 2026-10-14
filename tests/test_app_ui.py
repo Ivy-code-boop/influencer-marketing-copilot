@@ -84,12 +84,38 @@ def test_review_step_saves_decisions_and_confirms() -> None:
     at = seed_result_state(new_app())
     at.run()
     at.sidebar.radio[0].set_value("④ 人工审核").run()
+    # 先给第一位达人一个明确结论（状态选择框是页面上第 2 个 selectbox）
+    at.selectbox[1].set_value("建议联系").run()
+    at = click_button(at, "应用到这位达人")
+    assert not at.exception, [e.value for e in at.exception]
+    assert at.session_state["decisions"], "点应用后必须记录人工结论"
     at = click_button(at, "保存人工审核结果")
     assert not at.exception, [e.value for e in at.exception]
     decisions = at.session_state["decisions"]
-    assert decisions, "点击保存后必须写入人工审核结果"
     assert all(d.creator_id for d in decisions.values())
     assert any("已保存" in s.value for s in at.success), [s.value for s in at.success]
+
+
+def test_review_step_apply_and_next_moves_to_another_creator() -> None:
+    at = seed_result_state(new_app())
+    at.run()
+    at.sidebar.radio[0].set_value("④ 人工审核").run()
+    first_label = at.session_state["review_selected"]
+    first_id = first_label.split(" · ")[-1]
+    at = click_button(at, "应用并跳到下一位")
+    assert not at.exception, [e.value for e in at.exception]
+    assert at.session_state["review_selected"] != first_label, "「下一位」必须切换到另一位达人"
+    assert first_id in at.session_state["decisions"], at.session_state["decisions"]
+
+
+def test_review_step_has_no_inline_editable_grid() -> None:
+    """回归测试：4 号页面不能再出现滚动时错位的内联可编辑表格。"""
+    at = seed_result_state(new_app())
+    at.run()
+    at.sidebar.radio[0].set_value("④ 人工审核").run()
+    assert not at.exception, [e.value for e in at.exception]
+    assert "逐条审核" in " ".join(m.value for m in at.markdown), "应使用逐条审核面板"
+    assert "应用到这位达人" in button_labels(at), button_labels(at)
 
 
 def test_review_page_excludes_excluded_creators() -> None:

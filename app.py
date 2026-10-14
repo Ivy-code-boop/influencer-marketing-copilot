@@ -225,16 +225,21 @@ def step_data() -> None:
                         for i in issues
                     ]
                 ),
-                use_container_width=True,
+                width="stretch",
             )
 
     st.markdown("**字段覆盖率**（判断数据是否足够支撑分析）")
     coverage = pd.DataFrame(validation.field_coverage(dataset.creators))
     coverage["coverage"] = coverage["coverage"].map(lambda v: f"{v:.0%}")
-    st.dataframe(coverage.rename(columns={"field": "字段", "present": "非空条数", "total": "总条数", "coverage": "覆盖率"}), use_container_width=True)
+    st.dataframe(
+        coverage.rename(
+            columns={"field": "字段", "present": "非空条数", "total": "总条数", "coverage": "覆盖率"}
+        ),
+        width="stretch",
+    )
 
     st.markdown("**数据预览（前 10 条）**")
-    st.dataframe(pd.DataFrame(validation.preview_rows(dataset.creators)), use_container_width=True)
+    st.dataframe(pd.DataFrame(validation.preview_rows(dataset.creators)), width="stretch")
 
 
 def step_rules() -> None:
@@ -321,7 +326,7 @@ def step_rules() -> None:
             for a in assessments
         ]
     )
-    st.dataframe(table, use_container_width=True, hide_index=True)
+    st.dataframe(table, width="stretch", hide_index=True)
 
     st.markdown("**逐条依据（可核查）**")
     for a in assessments:
@@ -345,7 +350,7 @@ def step_rules() -> None:
                         for d in a.dimensions
                     ]
                 ),
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
             )
 
@@ -362,9 +367,18 @@ def step_review() -> None:
     if flash:
         st.success(flash)
 
-    label_to_code = {v: k for k, v in REVIEW_STATUS_LABELS.items()}
+    # 「应用并跳到下一位」不能直接改 Selectbox 的值（控件创建后禁止修改），
+    # 先存进另一个 key，等下一轮在控件创建之前再写进去。
+    pending_select = st.session_state.pop("review_pending_select", None)
+    if pending_select is not None:
+        st.session_state["review_selected"] = pending_select
+
     reviewable = [a for a in assessments if a.group != "excluded"]
     excluded_count = len(assessments) - len(reviewable)
+    if not reviewable:
+        st.warning("没有可审核的候选（全部被硬性条件排除）。")
+        return
+    by_id = {a.creator_id: a for a in reviewable}
 
     col_btn, col_hint = st.columns([1, 3])
     with col_btn:
@@ -382,47 +396,85 @@ def step_review() -> None:
             + "。保存后写入本次运行的 decisions.json，与规则结果分开存放。"
         )
 
-    editor_rows = []
-    for a in reviewable:
-        decision = st.session_state.decisions.get(
-            a.creator_id, ReviewDecision(creator_id=a.creator_id)
+    st.divider()
+    st.markdown("**逐条审核**")
+    st.caption(
+        "选一位达人 → 选审核状态 → 填写备注 → 点「应用到这位达人」。"
+        "为避免表格内联编辑在滚动时错位，这里改成一条一条地填，填完的记录会自动出现在下方进度表里。"
+    )
+
+    ids = [a.creator_id for a in reviewable]
+    label_to_id = {f"{by_id[cid].display_name} · {cid}": cid for cid in ids}
+    labels = list(label_to_id.keys())
+    if st.session_state.get("review_selected") not in labels:
+        st.session_state["review_selected"] = labels[0]
+
+    selected_label = st.selectbox("要审核的达人", labels, key="review_selected")
+    selected = label_to_id[selected_label]
+    current = by_id[selected]
+    decision = st.session_state.decisions.get(
+        selected, ReviewDecision(creator_id=selected)
+    )
+
+    col_status, col_note = st.columns([1, 2])
+    with col_status:
+        status_label = st.selectbox(
+            "审核状态",
+            list(REVIEW_STATUS_LABELS.values()),
+            index=list(REVIEW_STATUS_LABELS.values()).index(
+                REVIEW_STATUS_LABELS[decision.status]
+            ),
+            key=f"status_{selected}",
         )
-        editor_rows.append(
+    with col_note:
+        note = st.text_input("备注（可选）", value=decision.note, key=f"note_{selected}")
+
+    with st.expander(f"查看 {current.display_name} 的规则依据", expanded=False):
+        st.caption(f"规则得分 {current.weighted_score if current.weighted_score is not None else '信息不足'}"
+                   f" · 信息完整度 {current.coverage:.0%}")
+        for reason in current.reasons:
+            st.write(f"- {reason}")
+
+    col_apply, col_next = st.columns([1, 1])
+    with col_apply:
+        apply_clicked = st.button("应用到这位达人")
+    with col_next:
+        apply_next_clicked = st.button("应用并跳到下一位")
+
+    if apply_clicked or apply_next_clicked:
+        code = {v: k for k, v in REVIEW_STATUS_LABELS.items()}.get(status_label, "pending")
+        st.session_state.decisions[selected] = ReviewDecision(
+            creator_id=selected, status=code, note=note
+        )
+        st.session_state["review_flash"] = (
+            f"已记录 {current.display_name}：{status_label}"
+            + (f"（备注：{note}）" if note else "")
+        )
+        if apply_next_clicked:
+            idx = labels.index(selected_label)
+            st.session_state["review_pending_select"] = labels[(idx + 1) % len(labels)]
+        st.rerun()
+
+    rows = []
+    for a in reviewable:
+        d = st.session_state.decisions.get(a.creator_id)
+        rows.append(
             {
                 "达人": a.display_name,
                 "creator_id": a.creator_id,
                 "分组": {"qualified": "通过", "needs_review": "需核实"}[a.group],
                 "规则得分": round(a.weighted_score, 3) if a.weighted_score is not None else None,
-                "审核状态": REVIEW_STATUS_LABELS[decision.status],
-                "备注": decision.note,
+                "审核状态": REVIEW_STATUS_LABELS[d.status] if d else "待审核",
+                "备注": d.note if d else "",
             }
         )
-    edited = st.data_editor(
-        pd.DataFrame(editor_rows),
-        key="review_editor",
-        hide_index=True,
-        use_container_width=True,
-        disabled=["达人", "creator_id", "分组", "规则得分"],
-        column_config={
-            "审核状态": st.column_config.SelectboxColumn(
-                "审核状态",
-                help="人工结论，与规则/AI 结果分开保存。",
-                options=list(REVIEW_STATUS_LABELS.values()),
-                required=True,
-            ),
-            "备注": st.column_config.TextColumn("备注", help="人工备注，会一并导出。", width="large"),
-        },
-    )
+    st.markdown("**审核进度（只读）**")
+    st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
 
     if save_clicked:
-        decisions: dict[str, ReviewDecision] = {}
-        for row in edited.to_dict("records"):
-            creator_id = str(row["creator_id"])
-            decisions[creator_id] = ReviewDecision(
-                creator_id=creator_id,
-                status=label_to_code.get(str(row["审核状态"]), "pending"),
-                note=str(row.get("备注") or ""),
-            )
+        decisions = {
+            cid: d for cid, d in st.session_state.decisions.items() if cid in by_id
+        }
         st.session_state.decisions = decisions
         meta = st.session_state.run_meta
         target = ""
@@ -470,7 +522,7 @@ def step_export() -> None:
         )
 
     with st.expander("导出预览（前 5 行）", expanded=True):
-        st.dataframe(pd.DataFrame(rows).head(5), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(rows).head(5), width="stretch", hide_index=True)
     with st.expander("元数据内容"):
         st.json(export_meta)
 
