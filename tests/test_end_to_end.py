@@ -87,7 +87,7 @@ def test_full_journey_without_api(tmp_path) -> None:
     assert exported_first["review_status"] == REVIEW_STATUS_LABELS["contact"]
     assert exported_first["review_note"] == "人工核对通过"
     assert exported_first["rule_reasons"], "导出必须带判定依据"
-    assert exported_first["ai_status"] == "未运行（Phase 2）", "不得伪造 AI 结果"
+    assert exported_first["ai_status"] == "未运行", "没跑过 AI 就如实写未运行，不得伪造"
 
     metadata = json.loads(meta_path.read_text(encoding="utf-8"))
     assert metadata["data_hash"] == saved["data_hash"]

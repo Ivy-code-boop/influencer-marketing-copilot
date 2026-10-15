@@ -14,20 +14,68 @@ from pathlib import Path
 from .models import (
     DIMENSION_LABELS,
     REVIEW_STATUS_LABELS,
+    VERDICT_LABELS,
+    AIAnalysisRecord,
     CreatorAssessment,
     CreatorRecord,
     ReviewDecision,
 )
 
 GROUP_LABELS = {"qualified": "通过硬性条件", "needs_review": "需人工核实", "excluded": "已排除"}
+AI_STATUS_LABELS = {
+    "ok": "已完成",
+    "insufficient_info": "信息不足",
+    "failed": "失败",
+}
+
+
+def ai_columns(record: AIAnalysisRecord | None) -> dict:
+    """把 AI 结论压成几列写进导出文件；没有跑过 AI 就如实写「未运行」。"""
+    if record is None:
+        return {
+            "ai_status": "未运行",
+            "ai_provider": "",
+            "ai_from_cache": "",
+            "ai_content_relevance": "",
+            "ai_goal_fit": "",
+            "ai_audience_fit": "",
+            "ai_confidence": "",
+            "ai_summary": "",
+            "ai_risks": "",
+            "ai_missing_info": "",
+            "ai_human_checks": "",
+            "ai_evidence_problems": "",
+            "ai_numeric_conflicts": "",
+        }
+    status = AI_STATUS_LABELS.get(record.status, record.status)
+    if record.status == "failed":
+        status = f"失败（{record.error_label}）"
+    analysis = record.analysis
+    return {
+        "ai_status": status,
+        "ai_provider": "演示模式" if record.provider == "demo" else record.provider,
+        "ai_from_cache": "是" if record.from_cache else "否",
+        "ai_content_relevance": VERDICT_LABELS.get(analysis.content_relevance.verdict, "") if analysis else "",
+        "ai_goal_fit": VERDICT_LABELS.get(analysis.goal_fit.verdict, "") if analysis else "",
+        "ai_audience_fit": VERDICT_LABELS.get(analysis.audience_fit.verdict, "") if analysis else "",
+        "ai_confidence": analysis.confidence if analysis else "",
+        "ai_summary": " | ".join(analysis.recommendation_reasons) if analysis else "",
+        "ai_risks": " | ".join(f"[{r.type}] {r.detail}" for r in analysis.risks) if analysis else "",
+        "ai_missing_info": " | ".join(analysis.missing_info) if analysis else "",
+        "ai_human_checks": " | ".join(analysis.human_checks) if analysis else "",
+        "ai_evidence_problems": " | ".join(record.evidence_problems),
+        "ai_numeric_conflicts": " | ".join(record.numeric_conflicts),
+    }
 
 
 def build_export_rows(
     assessments: list[CreatorAssessment],
     creators: list[CreatorRecord],
     decisions: dict[str, ReviewDecision],
+    ai_records: dict[str, AIAnalysisRecord] | None = None,
 ) -> list[dict]:
     by_id = {c.creator_id: c for c in creators}
+    ai_map = ai_records or {}
     rows: list[dict] = []
     for a in assessments:
         creator = by_id.get(a.creator_id)
@@ -53,9 +101,7 @@ def build_export_rows(
                 **dim_cols,
                 "missing_fields": ",".join(sorted({m for d in a.dimensions for m in d.missing})),
                 "rule_reasons": " | ".join(a.reasons),
-                "ai_status": "未运行（Phase 2）",
-                "ai_summary": "",
-                "ai_risks": "",
+                **ai_columns(ai_map.get(a.creator_id)),
                 "review_status": REVIEW_STATUS_LABELS[decision.status],
                 "review_note": decision.note,
             }
@@ -91,7 +137,10 @@ def build_export_meta(meta: dict, rows: list[dict]) -> dict:
         "model_returned": meta.get("model_returned"),
         "exported_row_count": len(rows),
         "failed_or_insufficient_rows": sum(
-            1 for r in rows if r.get("ai_status") not in ("ok",) and r.get("rule_score") == ""
+            1
+            for r in rows
+            if str(r.get("ai_status", "")).startswith(("失败", "信息不足"))
+            or r.get("rule_score") == ""
         ),
         "notes": "导出内容包含全部记录（含无法判定与信息不足），未做删除。",
         "weights_note": "规则权重为项目初始假设，可在界面调整，不代表行业标准。",

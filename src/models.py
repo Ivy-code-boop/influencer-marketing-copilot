@@ -190,3 +190,90 @@ class Dataset(BaseModel):
     creators: list[CreatorRecord] = Field(default_factory=list)
     report: ValidationReport = Field(default_factory=ValidationReport)
     data_hash: str = ""
+
+
+# --------------------------------------------------------------------------
+# Phase 2：AI 语义分析相关模型
+# 依据 docs/01-prompt-revision-notes.md §6，字段名与枚举在这里固定下来，
+# 使 Prompt、Pydantic 校验、重试逻辑与界面展示有同一套契约。
+# --------------------------------------------------------------------------
+
+AnalysisStatus = Literal["ok", "insufficient_info", "failed"]
+Verdict3 = Literal["strong", "moderate", "weak", "unknown"]
+Confidence = Literal["high", "medium", "low"]
+
+VERDICT_LABELS: dict[str, str] = {
+    "strong": "明确匹配",
+    "moderate": "部分匹配",
+    "weak": "不匹配",
+    "unknown": "信息不足",
+}
+ERROR_KIND_LABELS: dict[str, str] = {
+    "config": "未配置 API",
+    "auth": "鉴权失败",
+    "timeout": "请求超时",
+    "rate_limit": "触发限流",
+    "network": "网络错误",
+    "server": "服务端错误",
+    "request": "请求被拒绝",
+    "format": "返回格式非法",
+    "evidence": "证据无法核对",
+    "validation": "结构校验失败",
+    "unknown": "未知错误",
+}
+
+
+class Evidence(BaseModel):
+    field: str
+    quote: str
+
+
+class VerdictItem(BaseModel):
+    verdict: Verdict3
+    reason: str
+    evidence: list[Evidence] = Field(default_factory=list)
+
+
+class RiskItem(BaseModel):
+    type: str
+    detail: str
+    evidence: list[Evidence] = Field(default_factory=list)
+
+
+class AIAnalysis(BaseModel):
+    """模型必须返回的结构。缺字段或枚举非法即视为格式错误，触发重试。"""
+
+    creator_id: str
+    analysis_status: AnalysisStatus = "ok"
+    content_relevance: VerdictItem
+    goal_fit: VerdictItem
+    audience_fit: VerdictItem
+    recommendation_reasons: list[str] = Field(default_factory=list)
+    mismatches: list[str] = Field(default_factory=list)
+    risks: list[RiskItem] = Field(default_factory=list)
+    missing_info: list[str] = Field(default_factory=list)
+    human_checks: list[str] = Field(default_factory=list)
+    data_conflicts: list[str] = Field(default_factory=list)
+    confidence: Confidence = "low"
+
+
+class AIAnalysisRecord(BaseModel):
+    """一次 AI 分析的结果记录：成功、失败、或来自缓存。失败必须如实记录，不伪造结论。"""
+
+    creator_id: str
+    status: AnalysisStatus
+    analysis: Optional[AIAnalysis] = None
+    error_kind: Optional[str] = None
+    error_message: Optional[str] = None
+    attempts: int = 0
+    model_returned: Optional[str] = None
+    provider: str = "deepseek"
+    from_cache: bool = False
+    prompt_version: str = ""
+    created_at: str = ""
+    evidence_problems: list[str] = Field(default_factory=list)
+    numeric_conflicts: list[str] = Field(default_factory=list)
+
+    @property
+    def error_label(self) -> str:
+        return ERROR_KIND_LABELS.get(self.error_kind or "", self.error_kind or "")

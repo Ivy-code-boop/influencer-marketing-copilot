@@ -8,15 +8,17 @@ AI 语义分析（Phase 2）在此版本中明确标注为「未配置 / 未运�
 from __future__ import annotations
 
 import json
+from datetime import datetime
 
 import pandas as pd
 import streamlit as st
 
-from src import export_service, rule_engine, snapshot, validation
+from src import ai_analyzer, ai_client, export_service, rule_engine, snapshot, validation
 from src.data_loader import DEMO_TASK, load_demo_dataset, load_upload_dataset
 from src.models import (
     GOAL_LABELS,
     REVIEW_STATUS_LABELS,
+    VERDICT_LABELS,
     MarketingTask,
     ReviewDecision,
     RuleConfig,
@@ -24,7 +26,7 @@ from src.models import (
 
 st.set_page_config(page_title="AI 海外达人营销助手", layout="wide")
 
-STEPS = ["① 任务配置", "② 达人数据", "③ 规则初筛", "④ 人工审核", "⑤ 导出"]
+STEPS = ["① 任务配置", "② 达人数据", "③ 规则初筛", "④ AI 语义分析", "⑤ 人工审核", "⑥ 导出"]
 
 
 def init_state() -> None:
@@ -33,6 +35,7 @@ def init_state() -> None:
     st.session_state.setdefault("config", RuleConfig())
     st.session_state.setdefault("assessments", None)
     st.session_state.setdefault("decisions", {})
+    st.session_state.setdefault("ai_records", {})
     st.session_state.setdefault("run_meta", None)
     st.session_state.setdefault("last_run_meta", None)
 
@@ -355,8 +358,239 @@ def step_rules() -> None:
             )
 
 
+def step_ai() -> None:
+    st.header("④ AI 语义分析")
+    task = st.session_state.task
+    dataset = st.session_state.dataset
+    assessments = st.session_state.assessments
+    if not (task and dataset and assessments):
+        st.warning("请先完成任务配置、加载数据并运行规则初筛。")
+        return
+
+    flash = st.session_state.pop("ai_flash", None)
+    if flash:
+        st.success(flash)
+
+    override = st.session_state.get("ai_client_override")
+    env_client = None if override is not None else ai_client.DeepSeekClient.from_env()
+    if override is not None:
+        client = override
+        st.info(f"当前使用注入的测试客户端：{getattr(client, 'model', 'unknown')}（不会产生真实调用）")
+    elif env_client is None:
+        client = None
+        st.warning(
+            "未配置 DEEPSEEK_API_KEY：AI 语义分析暂不可用。\n\n"
+            "- 规则初筛、人工审核、导出都不受影响，可以先继续用。\n"
+            "- 配置方法：把 `.env.example` 复制为 `.env`，填入你自己的 Key"
+            "（`.env` 已在 `.gitignore` 中，不会被提交）。\n"
+            "- 没有 Key 时我不会用假结果顶替 AI 结论。"
+        )
+    else:
+        client = env_client
+        st.info(f"已检测到 API Key，模型：{client.model}")
+
+    qualified = [a for a in assessments if a.group == "qualified"]
+    if not qualified:
+        st.warning("没有通过硬性条件的候选，AI 环节没有可分析对象。")
+        return
+    if client is None:
+        return
+
+    by_id = {c.creator_id: c for c in dataset.creators}
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        top_n = st.number_input(
+            "分析排名前 N 名",
+            min_value=1,
+            max_value=ai_analyzer.MAX_TOP_N,
+            value=min(ai_analyzer.DEFAULT_TOP_N, len(qualified)),
+            step=1,
+        )
+    with col2:
+        force = st.checkbox("忽略缓存，强制重新分析", value=False)
+        st.caption("AI 只做语义判断，不重算粉丝量、互动率等基础指标；每条结论都必须引用原始字段作为证据。")
+
+    pairs = [
+        (by_id[a.creator_id], a) for a in qualified[: int(top_n)] if a.creator_id in by_id
+    ]
+    cache = ai_analyzer.AnalysisCache()
+    data_h = snapshot.data_hash(dataset.creators)
+    task_h = snapshot.task_hash(task)
+    estimate = ai_analyzer.estimate_requests(
+        pairs, data_h, task_h, getattr(client, "model", "unknown"), cache
+    )
+    st.caption(
+        f"候选 {estimate['candidates']} 条 · 命中缓存 {estimate['cached']} 条 · "
+        f"预计实际调用 {estimate['to_call']} 次 · 模型 {estimate['model']} · "
+        f"Prompt {estimate['prompt_version']}"
+    )
+    confirm = st.checkbox(
+        f"我确认发起最多 {estimate['to_call']} 次调用（会消耗额度）", value=False
+    )
+    if st.button(
+        "运行 AI 分析", type="primary", disabled=(not confirm) or not pairs
+    ):
+        with st.spinner("正在分析，请稍候…"):
+            records = ai_analyzer.analyze_candidates(
+                pairs,
+                task,
+                client,
+                cache=cache,
+                data_hash=data_h,
+                task_hash_value=task_h,
+                force=force,
+            )
+        st.session_state["ai_records"] = {r.creator_id: r for r in records}
+        meta = st.session_state.run_meta
+        if meta and meta.get("run_id"):
+            run_dir = snapshot.RUNS_DIR / meta["run_id"]
+            updated = snapshot.read_run(run_dir) or meta
+            updated.update(
+                {
+                    "prompt_version": ai_analyzer.PROMPT_VERSION,
+                    "model_requested": getattr(client, "model", None),
+                    "model_returned": next(
+                        (r.model_returned for r in records if r.model_returned), None
+                    ),
+                    "analysis_top_n": int(top_n),
+                    "ai_run_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+                }
+            )
+            run_dir.mkdir(parents=True, exist_ok=True)
+            (run_dir / "ai_results.json").write_text(
+                json.dumps(
+                    [r.model_dump(mode="json") for r in records], ensure_ascii=False, indent=2
+                ),
+                encoding="utf-8",
+            )
+            snapshot.write_run(updated)
+            st.session_state.run_meta = updated
+        ok = sum(1 for r in records if r.status == "ok")
+        ins = sum(1 for r in records if r.status == "insufficient_info")
+        failed = sum(1 for r in records if r.status == "failed")
+        st.session_state["ai_flash"] = (
+            f"AI 分析完成：已完成 {ok} · 信息不足 {ins} · 失败 {failed}"
+            f"（失败与信息不足都如实记录，没有被伪造或丢弃）"
+        )
+        st.rerun()
+
+    records = st.session_state.get("ai_records") or {}
+    if not records:
+        st.info("还没有 AI 结果。")
+        return
+
+    if estimate["candidates"] and len(records) != estimate["candidates"]:
+        st.warning(
+            "当前 AI 结果与规则候选数量不一致，可能规则配置已经改过，建议重新运行。"
+        )
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("已完成", sum(1 for r in records.values() if r.status == "ok"))
+    c2.metric("信息不足", sum(1 for r in records.values() if r.status == "insufficient_info"))
+    c3.metric("失败", sum(1 for r in records.values() if r.status == "failed"))
+    c4.metric("来自缓存", sum(1 for r in records.values() if r.from_cache))
+
+    st.dataframe(
+        pd.DataFrame(
+            [
+                {
+                    "creator_id": cid,
+                    "状态": export_service.AI_STATUS_LABELS.get(r.status, r.status)
+                    if r.status != "failed"
+                    else f"失败（{r.error_label}）",
+                    "内容相关性": VERDICT_LABELS.get(r.analysis.content_relevance.verdict, "")
+                    if r.analysis
+                    else "",
+                    "目标匹配": VERDICT_LABELS.get(r.analysis.goal_fit.verdict, "") if r.analysis else "",
+                    "受众匹配": VERDICT_LABELS.get(r.analysis.audience_fit.verdict, "")
+                    if r.analysis
+                    else "",
+                    "置信度": r.analysis.confidence if r.analysis else "",
+                    "证据问题": len(r.evidence_problems),
+                    "可疑数字": len(r.numeric_conflicts),
+                }
+                for cid, r in records.items()
+            ]
+        ),
+        width="stretch",
+        hide_index=True,
+    )
+
+    st.markdown("**逐条结论与证据**")
+    for cid, record in records.items():
+        title = f"{cid} · " + (
+            export_service.AI_STATUS_LABELS.get(record.status, record.status)
+            if record.status != "failed"
+            else f"失败（{record.error_label}）"
+        )
+        with st.expander(title):
+            if record.status == "failed":
+                st.error(f"{record.error_label}：{record.error_message}")
+            if record.analysis is not None:
+                analysis = record.analysis
+                st.dataframe(
+                    pd.DataFrame(
+                        [
+                            {
+                                "维度": label,
+                                "判断": VERDICT_LABELS[item.verdict],
+                                "理由": item.reason,
+                                "证据": "；".join(
+                                    f"{e.field}：{e.quote[:40]}" for e in item.evidence
+                                )
+                                or "—",
+                            }
+                            for label, item in (
+                                ("内容相关性", analysis.content_relevance),
+                                ("目标匹配", analysis.goal_fit),
+                                ("受众匹配", analysis.audience_fit),
+                            )
+                        ]
+                    ),
+                    width="stretch",
+                    hide_index=True,
+                )
+                for reason in analysis.recommendation_reasons:
+                    st.write(f"- 推荐理由：{reason}")
+                for item in analysis.mismatches:
+                    st.write(f"- 不匹配：{item}")
+                for risk in analysis.risks:
+                    st.write(f"- 风险〔{risk.type}〕{risk.detail}")
+                if analysis.missing_info:
+                    st.write("- 缺失信息：" + "；".join(analysis.missing_info))
+                if analysis.human_checks:
+                    st.write("- 需人工核实：" + "；".join(analysis.human_checks))
+            if record.evidence_problems:
+                st.warning("证据无法核对：\n\n- " + "\n- ".join(record.evidence_problems))
+            if record.numeric_conflicts:
+                st.warning("出现输入里没有的数字：\n\n- " + "\n- ".join(record.numeric_conflicts))
+            if record.from_cache:
+                st.caption("这条结论来自缓存，没有重复调用模型。")
+
+            if st.button("重新分析这一条（忽略缓存）", key=f"retry_{cid}"):
+                assessment = next((a for a in assessments if a.creator_id == cid), None)
+                if assessment is not None and cid in by_id:
+                    with st.spinner(f"正在重新分析 {cid}…"):
+                        retried = ai_analyzer.analyze_one(
+                            by_id[cid],
+                            assessment,
+                            task,
+                            client,
+                            cache=cache,
+                            data_hash=data_h,
+                            task_hash_value=task_h,
+                            force=True,
+                        )
+                    st.session_state["ai_records"][cid] = retried
+                    st.session_state["ai_flash"] = (
+                        f"{cid} 已重新分析："
+                        + export_service.AI_STATUS_LABELS.get(retried.status, retried.status)
+                    )
+                    st.rerun()
+
+
 def step_review() -> None:
-    st.header("④ 人工审核")
+    st.header("⑤ 人工审核")
     assessments = st.session_state.assessments
     if not assessments:
         st.warning("请先运行规则初筛。")
@@ -434,6 +668,26 @@ def step_review() -> None:
                    f" · 信息完整度 {current.coverage:.0%}")
         for reason in current.reasons:
             st.write(f"- {reason}")
+        st.divider()
+        ai_record = (st.session_state.get("ai_records") or {}).get(current.creator_id)
+        if ai_record is None:
+            st.caption("AI 分析：未运行")
+        elif ai_record.analysis is None:
+            st.caption(f"AI 分析：失败（{ai_record.error_label}）—— 不是结论，请勿据此决策")
+        else:
+            analysis = ai_record.analysis
+            st.write(
+                f"AI 判断：内容相关性 {VERDICT_LABELS[analysis.content_relevance.verdict]} · "
+                f"目标匹配 {VERDICT_LABELS[analysis.goal_fit.verdict]} · "
+                f"受众匹配 {VERDICT_LABELS[analysis.audience_fit.verdict]}"
+                f"（置信度 {analysis.confidence}）"
+            )
+            for reason in analysis.recommendation_reasons:
+                st.write(f"- {reason}")
+            for risk in analysis.risks:
+                st.write(f"- 风险〔{risk.type}〕{risk.detail}")
+            if ai_record.evidence_problems:
+                st.warning("这条 AI 结论有证据无法核对，请谨慎采用。")
 
     col_apply, col_next = st.columns([1, 1])
     with col_apply:
@@ -490,7 +744,7 @@ def step_review() -> None:
 
 
 def step_export() -> None:
-    st.header("⑤ 导出")
+    st.header("⑥ 导出")
     assessments = st.session_state.assessments
     dataset = st.session_state.dataset
     meta = st.session_state.run_meta
@@ -498,7 +752,12 @@ def step_export() -> None:
         st.warning("请先运行规则初筛。")
         return
 
-    rows = export_service.build_export_rows(assessments, dataset.creators, st.session_state.decisions)
+    rows = export_service.build_export_rows(
+        assessments,
+        dataset.creators,
+        st.session_state.decisions,
+        st.session_state.get("ai_records") or {},
+    )
     csv_text = export_service.rows_to_csv_text(rows)
     export_meta = export_service.build_export_meta(meta, rows)
 
@@ -537,6 +796,8 @@ def main() -> None:
     elif step == STEPS[2]:
         step_rules()
     elif step == STEPS[3]:
+        step_ai()
+    elif step == STEPS[4]:
         step_review()
     else:
         step_export()

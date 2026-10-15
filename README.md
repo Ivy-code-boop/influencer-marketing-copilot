@@ -2,7 +2,7 @@
 
 帮助海外营销人员从一批候选达人中，筛选出值得进一步人工评估的对象，解释匹配原因、展示证据与风险，并辅助制定优先联系名单。
 
-**当前版本：Phase 1（规则链路端到端可运行，尚未接入 DeepSeek API）。**
+**当前版本：Phase 2（规则链路 + AI 语义分析；AI 需要配置 API Key，未配置时规则链路照常可用）。**
 本文档只描述已经实现并验证过的内容；未实现的部分会在「还没做什么」里明确列出。
 
 ---
@@ -59,7 +59,7 @@ pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 > 本机当前使用 `C:\Users\liang\Python312\python.exe`（Python 3.12.14，已加入用户 PATH），
 > 项目虚拟环境位于 `.venv\`。
 
-## 6. DeepSeek API 配置（Phase 2 才会用到）
+## 6. DeepSeek API 配置
 
 ```powershell
 Copy-Item .env.example .env
@@ -68,6 +68,8 @@ notepad .env     # 填入你自己的 DEEPSEEK_API_KEY
 
 - API Key 只从本机 `.env` 读取，`.env` 已在 `.gitignore` 中，不会进 Git。
 - **不配置 API 也能完整跑通规则链路**，界面会明确显示 AI 环节未配置，不会用假结果顶替。
+- 配置后，第 ④ 步「AI 语义分析」会在**调用前**显示候选数、命中缓存数、预计实际调用次数与模型版本，并需要你再点一次确认，避免意外消耗额度。
+- AI 结论必须带证据字段引用；证据若在原始数据里找不到、或出现输入中没有的数字，会被单独标出来。
 
 ## 7. 数据说明
 
@@ -113,6 +115,7 @@ notepad .env     # 填入你自己的 DEEPSEEK_API_KEY
 |---|---|
 | `meta.json` | run_id、分析时间、数据来源、data_hash、数据条数、任务配置与 hash、rule_version、rule_config_hash、prompt_version、模型标识、分析条数、app_version |
 | `rule_results.csv` | 规则结果明细 |
+| `ai_results.json` | AI 逐条结论、错误分类与证据核对结果（未运行 AI 时不产生该文件） |
 | `decisions.json` | 人工审核状态与备注（与规则/AI 结果分开存储） |
 
 导出为**两个文件**：结果 CSV（UTF-8 BOM，Excel 打开不乱码）+ 元数据 JSON（数据来源、分析时间、版本信息）。失败或信息不足的记录全部保留并标注状态，不静默删除。
@@ -123,11 +126,14 @@ notepad .env     # 填入你自己的 DEEPSEEK_API_KEY
 python -m pytest -q
 ```
 
-当前 31 项测试通过，覆盖：CSV 编码/格式解析、重复 ID、缺失字段、空文件、硬性条件通过/未通过/无法判定、缺失数据不被当 0 分、排序与候选池、导出完整性、快照与过期判定，以及不配置 API 时的端到端流程。
+当前 70 项测试通过，覆盖：CSV 编码/格式解析、重复 ID、缺失字段、空文件、硬性条件三态、缺失数据不被当 0 分、排序与候选池、导出完整性、快照与过期判定、不配置 API 时的端到端流程，以及 AI 层的合法结构 / 非法 JSON / 缺字段 / 超时 / 鉴权 / 限流 / 重试上限 / 缓存命中与强制重试 / 缓存写失败降级 / 证据核对 / 编造数字检测 / Key 脱敏。
+
+界面行为也用 Streamlit 官方 AppTest 真实驱动验证（保存任务、运行规则、AI 运行、逐条审核、导出），不是只检查代码存在。
 
 ## 11. 还没做什么（诚实清单）
 
-- **AI 语义分析（Phase 2）未接入**：界面上 AI 相关字段统一显示「未运行（Phase 2）」，没有任何伪造结果。
+- **AI 已接入但未联调真实 API**：全部失败分支用假客户端测过，真实返回的格式稳定性需要一次真实调用确认。
+- **结果过期提示（Phase 3）尚未完善**：目前规则层已有 data_hash / task_hash / rule_config_hash 的比对与提示，AI 结果的过期联动仍在 Phase 3。
 - **离线评估（Phase 4）未开始**：`data/evaluation/` 目前为空。
 - **界面未做视觉打磨**：功能完整优先，没有图表、没有英文界面（文案已集中便于后续 i18n）。
 - **没有实现**：登录/权限、数据库、真实平台抓取、自动联系达人、ROI 预测、多 Agent、向量检索。
@@ -135,6 +141,6 @@ python -m pytest -q
 
 ## 12. 下一步
 
-Phase 2：设计 `prompts/creator_analysis_v1.md`、实现 `ai_client.py` 与 `ai_analyzer.py`（OpenAI 兼容接口 + Pydantic 校验 + 失败分类 + 单条重试 + 缓存去重），并让每条 AI 结论带证据字段引用。
+Phase 3：完善结果追溯与过期机制（数据 / 任务 / 规则 / Prompt / 模型任一变化 → 旧结果标记「已过期」，导出元数据带快照字段，缓存命中的结果一眼可辨）。
 
-更完整的阶段计划、验收标准与风险清单见 `docs/02-phase0-environment-and-design.md`；已完成的实情汇报见 `docs/03-phase1-report.md`。
+更完整的阶段计划、验收标准与风险清单见 `docs/02-phase0-environment-and-design.md`；实情汇报见 `docs/03-phase1-report.md` 与 `docs/04-phase2-report.md`。

@@ -25,11 +25,51 @@ def test_export_keeps_every_record() -> None:
     assert {r["creator_id"] for r in rows} == {"best", "unknown", "out"}
 
 
-def test_export_marks_ai_as_not_run() -> None:
+def test_export_marks_ai_as_not_run_when_never_executed() -> None:
     creators, assessments = sample_assessments()
     rows = export_service.build_export_rows(assessments, creators, {})
-    assert all(r["ai_status"] == "未运行（Phase 2）" for r in rows)
+    assert all(r["ai_status"] == "未运行" for r in rows)
     assert all(r["ai_summary"] == "" for r in rows)
+
+
+def test_export_carries_ai_columns_when_ai_ran() -> None:
+    from src.models import AIAnalysis, AIAnalysisRecord
+
+    creators, assessments = sample_assessments()
+    analysis = AIAnalysis.model_validate(
+        {
+            "creator_id": "best",
+            "analysis_status": "ok",
+            "content_relevance": {"verdict": "strong", "reason": "内容贴合", "evidence": []},
+            "goal_fit": {"verdict": "moderate", "reason": "适合种草", "evidence": []},
+            "audience_fit": {"verdict": "unknown", "reason": "缺受众描述", "evidence": []},
+            "recommendation_reasons": ["内容主题贴合"],
+            "risks": [{"type": "content_risk", "detail": "风格偏猎奇", "evidence": []}],
+            "missing_info": ["audience_description"],
+            "human_checks": ["确认报价"],
+            "confidence": "medium",
+        }
+    )
+    record = AIAnalysisRecord(
+        creator_id="best",
+        status="ok",
+        analysis=analysis,
+        model_returned="deepseek-chat",
+        attempts=1,
+        evidence_problems=["受众匹配：引用了空字段「audience_description」"],
+    )
+    rows = export_service.build_export_rows(
+        assessments, creators, {}, {"best": record}
+    )
+    row = [r for r in rows if r["creator_id"] == "best"][0]
+    assert row["ai_status"] == "已完成"
+    assert row["ai_content_relevance"] == "明确匹配"
+    assert row["ai_audience_fit"] == "信息不足"
+    assert "content_risk" in row["ai_risks"]
+    assert "audience_description" in row["ai_missing_info"]
+    assert row["ai_evidence_problems"], "证据问题必须原样带进导出"
+    untouched = [r for r in rows if r["creator_id"] == "out"][0]
+    assert untouched["ai_status"] == "未运行"
 
 
 def test_export_includes_review_state_and_note() -> None:
