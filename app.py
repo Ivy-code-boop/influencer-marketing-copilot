@@ -8,10 +8,23 @@ AI 语义分析（Phase 2）在此版本中明确标注为「未配置 / 未运�
 from __future__ import annotations
 
 import json
+import os
+import sys
 from datetime import datetime
 
 import pandas as pd
 import streamlit as st
+
+# Streamlit 只重跑主脚本，不会重新导入 src/ 下的模块。
+# 改了 src/ 里的代码后，进程里仍是旧模块，轻则页面继续用旧逻辑，重则直接
+# ImportError（例如给 models.py 新增了模型类）。这里在每次重跑脚本前把 src 包
+# 从模块缓存里清掉，强制加载最新代码 —— 这样改完代码按 F5 就够了，不用重启服务。
+# 测试环境跳过：pytest 会直接 import src.* 并做 monkeypatch，清缓存会让替换失效。
+if os.environ.get("PYTEST_CURRENT_TEST") is None:
+    for _stale_name in [
+        name for name in list(sys.modules) if name == "src" or name.startswith("src.")
+    ]:
+        del sys.modules[_stale_name]
 
 from src import ai_analyzer, ai_client, export_service, rule_engine, snapshot, validation
 from src.data_loader import DEMO_TASK, load_demo_dataset, load_upload_dataset

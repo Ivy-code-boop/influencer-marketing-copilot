@@ -52,6 +52,11 @@ python -m pytest -q
 
 浏览器会自动打开 `http://localhost:8501`。若依赖下载缓慢，可临时改用镜像：
 
+> **改完代码后怎么办**：改 `app.py` 只要在浏览器按 `F5`；
+> 改 `src/` 下的模块（很多情况下）需要重启服务——不过 `app.py` 顶部已经加了自动重载
+> `src` 包的处理，所以正常情况下按 `F5` 就够。若仍看到 `ImportError` 或页面行为异常，
+> 在终端按 `Ctrl + C` 停掉再重新 `streamlit run app.py` 即可。
+
 ```powershell
 pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
