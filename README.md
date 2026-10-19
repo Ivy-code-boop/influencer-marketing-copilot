@@ -148,4 +148,7 @@ python -m pytest -q
 
 Phase 3：完善结果追溯与过期机制（数据 / 任务 / 规则 / Prompt / 模型任一变化 → 旧结果标记「已过期」，导出元数据带快照字段，缓存命中的结果一眼可辨）。
 
-更完整的阶段计划、验收标准与风险清单见 `docs/02-phase0-environment-and-design.md`；实情汇报见 `docs/03-phase1-report.md` 与 `docs/04-phase2-report.md`。
+更完整的阶段计划与验收标准见 `docs/02-phase0-environment-and-design.md`；
+实施汇报见 `docs/03-phase1-report.md`、`docs/04-phase2-report.md`；
+评估结果见 `docs/06-evaluation-report.md`；
+**原理说明与面试讲法见 `docs/07-principles-and-interview.md`**。
