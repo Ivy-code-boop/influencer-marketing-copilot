@@ -244,6 +244,30 @@ def test_top_n_is_capped_by_env_for_public_deployment(tmp_path, monkeypatch) -> 
     assert len(at.session_state["ai_records"]) == 3
 
 
+def test_export_after_ai_run_is_not_marked_stale(tmp_path, monkeypatch) -> None:
+    """回归测试：跑完 AI 再导出，不能被误标成「已过期」。"""
+    monkeypatch.setattr(ai_analyzer, "RUNTIME_DIR", tmp_path)
+    monkeypatch.setattr(snapshot, "RUNS_DIR", tmp_path / "runs")
+    at = seed_result_state(new_app())
+    at.session_state["ai_client_override"] = EchoFakeClient()
+    at.run()
+
+    at.sidebar.radio[0].set_value("③ 规则初筛").run()
+    at = click_button(at, "运行规则初筛")
+    assert at.session_state["run_meta"]
+
+    at.sidebar.radio[0].set_value("④ AI 语义分析").run()
+    at.number_input[0].set_value(1).run()
+    at.checkbox[1].set_value(True).run()
+    at = click_button(at, "运行 AI 分析")
+    assert at.session_state["ai_records"]
+
+    at.sidebar.radio[0].set_value("⑥ 导出").run()
+    assert not at.exception, [e.value for e in at.exception]
+    errors = " ".join(e.value for e in at.error)
+    assert "已过期" not in errors, errors
+
+
 def test_sidebar_shows_version_so_we_can_tell_which_code_is_running() -> None:
     at = new_app().run()
     captions = " ".join(c.value for c in at.sidebar.caption)

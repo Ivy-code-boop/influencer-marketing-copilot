@@ -15,7 +15,7 @@ from pathlib import Path
 from .models import CreatorRecord, MarketingTask, RuleConfig
 
 # 每次界面/行为有可见变化就+1，方便确认浏览器里跑的是不是最新代码
-APP_VERSION = "0.3.0"
+APP_VERSION = "0.3.1"
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 RUNTIME_DIR = PROJECT_ROOT / "runtime"
 RUNS_DIR = RUNTIME_DIR / "runs"
@@ -157,7 +157,11 @@ def staleness_reasons(meta: dict, current: dict) -> list[str]:
         labels.pop("prompt_version", None)
         labels.pop("model_requested", None)
     for key, label in labels.items():
-        if meta.get(key) != current.get(key):
+        current_value = current.get(key)
+        # 当前环境确定不了这一项（例如没配模型）时不下结论，避免误报「已过期」
+        if current_value is None:
+            continue
+        if meta.get(key) != current_value:
             reasons.append(f"{label}（快照 {meta.get(key)} → 当前 {current.get(key)}）")
     return reasons
 

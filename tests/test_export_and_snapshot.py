@@ -228,3 +228,24 @@ def test_export_marks_stale_results() -> None:
     )
     assert export_meta["result_is_stale"] is True
     assert export_meta["staleness_reasons"] == ["达人数据已变化"]
+
+
+def test_staleness_skips_unknown_current_values() -> None:
+    """导出页拿不到当前模型/Prompt 时不能误判为过期（真实云端导出踩过这个坑）。"""
+    creators, _ = sample_assessments()
+    meta = snapshot.build_meta(
+        run_id="r1",
+        task=make_task(),
+        config=RuleConfig(),
+        creators=creators,
+        dataset_source="demo",
+        data_origin="demo",
+        prompt_version="creator_analysis_v1",
+        model_requested="deepseek-chat",
+    )
+    meta["ai_enabled"] = True
+    current_without_ai_info = snapshot.current_fingerprint(
+        creators, make_task(), RuleConfig()
+    )
+    assert current_without_ai_info["prompt_version"] is None
+    assert snapshot.staleness_reasons(meta, current_without_ai_info) == []

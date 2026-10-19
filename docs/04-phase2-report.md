@@ -69,3 +69,26 @@ Phase 3：把版本与过期链路补完整 —— 数据/任务/规则/Prompt/�
 - 复核结果：以 `liang` 身份执行 `python -m pytest -q` → `70 passed`，临时目录正常重建。
 
 **给你的提醒**：如果你在自己的终端里看到类似的 `PermissionError`，先删除 `%TEMP%\pytest-of-liang` 再重跑即可。
+
+## 8. 首次真实 API 联调（2026-10-19，Streamlit Community Cloud）
+
+环境：公网部署版，模型 `deepseek-chat`，分析 2 条真实候选。
+
+结果：
+
+| 项目 | 结果 |
+|---|---|
+| 结构化输出 | 两条都通过 Pydantic 校验 |
+| 证据核对 | 0 处问题（引用的原文都能在原始字段里逐字找到） |
+| 编造数字检测 | 0 处 |
+| 判断质量 | 第一名（Lena）三维度「明确匹配」；第二名（Mia）判为「部分匹配」并明确指出「缺少咖啡/饮品相关内容的直接证据」——这正是「表面相关」与「真正相关」的区分能力 |
+
+这次联调发现的 bug：**导出时把结果误标为「已过期」**。
+原因是 AI 跑过之后快照里记了 `prompt_version` 与 `model`，而导出页构造的「当前指纹」没有带这两项，
+拿 `None` 去比对必然不等。修复方式：
+
+1. 当前值无法确定（为 `None`）时跳过该项比较，不误判；
+2. 导出页的当前指纹补上 Prompt 版本与正在使用的模型。
+
+修复后 80 项测试通过（新增 2 项回归测试：`test_staleness_skips_unknown_current_values`、
+`test_export_after_ai_run_is_not_marked_stale`）。

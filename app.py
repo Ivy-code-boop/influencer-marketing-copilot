@@ -90,6 +90,8 @@ def current_fingerprint() -> dict:
         dataset.creators if dataset else None,
         st.session_state.task,
         st.session_state.config,
+        prompt_version=ai_analyzer.PROMPT_VERSION,
+        model=st.session_state.get("ai_model_in_use") or os.environ.get("DEEPSEEK_MODEL"),
     )
 
 
@@ -433,6 +435,7 @@ def step_ai() -> None:
     else:
         client = env_client
         st.info(f"已检测到 API Key，模型：{client.model}")
+    st.session_state["ai_model_in_use"] = getattr(client, "model", None)
 
     run_meta = st.session_state.run_meta or {}
     ai_fingerprint = snapshot.current_fingerprint(
@@ -813,20 +816,20 @@ def step_export() -> None:
         st.warning("请先运行规则初筛。")
         return
 
+    stale_reasons = snapshot.staleness_reasons(meta, current_fingerprint())
     rows = export_service.build_export_rows(
         assessments,
         dataset.creators,
         st.session_state.decisions,
         st.session_state.get("ai_records") or {},
-        result_is_stale=bool(snapshot.staleness_reasons(meta, current_fingerprint())),
+        result_is_stale=bool(stale_reasons),
     )
     csv_text = export_service.rows_to_csv_text(rows)
     export_meta = export_service.build_export_meta(
-        {**meta, "staleness_reasons": snapshot.staleness_reasons(meta, current_fingerprint())},
+        {**meta, "staleness_reasons": stale_reasons},
         rows,
     )
 
-    stale_reasons = snapshot.staleness_reasons(meta, current_fingerprint())
     if stale_reasons:
         st.error(
             "这份结果已过期（导出文件会标注 result_is_stale=是）：\n\n- "
