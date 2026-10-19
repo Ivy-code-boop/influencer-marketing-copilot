@@ -22,7 +22,12 @@ import streamlit as st
 # 测试环境跳过：pytest 会直接 import src.* 并做 monkeypatch，清缓存会让替换失效。
 if os.environ.get("PYTEST_CURRENT_TEST") is None:
     for _stale_name in [
-        name for name in list(sys.modules) if name == "src" or name.startswith("src.")
+        name
+        for name in list(sys.modules)
+        if name == "src"
+        or name.startswith("src.")
+        or name == "ui"
+        or name.startswith("ui.")
     ]:
         del sys.modules[_stale_name]
 
@@ -36,6 +41,7 @@ from src.models import (
     ReviewDecision,
     RuleConfig,
 )
+from ui.styles import GLOBAL_CSS
 
 st.set_page_config(page_title="AI 海外达人营销助手", layout="wide")
 
@@ -863,6 +869,8 @@ def step_export() -> None:
 
 def main() -> None:
     load_cloud_secrets()
+    # 全局视觉层：所有 CSS 集中在 ui/styles.py，这里只注入一次
+    st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
     init_state()
     step = render_sidebar()
     if step == STEPS[0]:

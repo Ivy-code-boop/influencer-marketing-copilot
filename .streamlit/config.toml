@@ -1,0 +1,18 @@
+# Streamlit 主题配置（只影响视觉，不改变任何业务逻辑）
+[theme]
+primaryColor = "#4F46E5"
+backgroundColor = "#F6F7F9"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#0F172A"
+# Streamlit 只接受 sans serif / serif / monospace；
+# 具体字体族（Inter、苹方、微软雅黑）在 ui/styles.py 的 CSS 里指定。
+font = "sans serif"
+
+[server]
+headless = true
+
+[browser]
+gatherUsageStats = false
+
+[client]
+showErrorDetails = true
