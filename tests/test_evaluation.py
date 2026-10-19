@@ -89,7 +89,30 @@ def test_ai_evaluation_reports_incremental_and_new_errors() -> None:
     assert summary["ai_failed"] == []
 
 
-def test_decide_by_ai_handles_failure_without_guessing() -> None:
+def test_rule_plus_ai_keeps_hard_filter() -> None:
+    """方案 B 必须沿用相同的硬性过滤：AI 说推荐也不能覆盖硬性条件未通过。"""
+    client = AlwaysRecommendClient()
+    report = evaluation.run_evaluation(client=client)
+    by_case = {r["case_id"]: r for r in report["rows"]}
+    assert by_case["E03"]["rules_decision"] == "not_recommend"
+    assert by_case["E03"]["ai_decision"] == "not_recommend", "语言不符，AI 不能把它拉回推荐"
+    assert by_case["E09"]["ai_decision"] == "insufficient", "缺语言字段应保持信息不足"
+    assert by_case["E10"]["ai_decision"] == "insufficient", "缺粉丝量应保持信息不足"
+
+
+def test_decide_by_rule_plus_ai_handles_failure_without_guessing() -> None:
+    from src.models import CreatorRecord, MarketingTask, RuleConfig
+    from src.rule_engine import evaluate_creator
+
+    task = MarketingTask(
+        product_name="x", product_pitch="y", target_market="德国",
+        target_platform="TikTok", marketing_goal="content_seeding",
+    )
+    assessment = evaluate_creator(
+        CreatorRecord(creator_id="c1", market="德国", language="德语", follower_count=20000),
+        task,
+        RuleConfig(),
+    )
     record = AIAnalysisRecord(creator_id="x", status="failed", error_kind="timeout")
-    assert evaluation.decide_by_ai(record) == "ai_failed"
-    assert evaluation.decide_by_ai(None) == "not_run"
+    assert evaluation.decide_by_rule_plus_ai(record, assessment) == "ai_failed"
+    assert evaluation.decide_by_rule_plus_ai(None, assessment) == "not_run"

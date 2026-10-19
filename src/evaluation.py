@@ -74,8 +74,18 @@ def decide_by_rules(
     return "recommend" if assessment.weighted_score >= threshold else "not_recommend"
 
 
-def decide_by_ai(record: AIAnalysisRecord | None) -> str:
-    """规则 + AI 方案的结论。AI 未运行 / 失败时如实返回对应状态，不猜测。"""
+def decide_by_rule_plus_ai(
+    record: AIAnalysisRecord | None, assessment: CreatorAssessment
+) -> str:
+    """方案 B：**相同的基础筛选结果** + AI 语义判断。
+
+    这一点很关键：如果丢掉硬性过滤，方案 B 就变成了「纯 AI」，对比不公平。
+    硬性条件未通过 → 直接不推荐；无法判定 → 信息不足；两者都不由 AI 覆盖。
+    """
+    if assessment.hard_check.verdict == "fail":
+        return "not_recommend"
+    if assessment.hard_check.verdict == "unknown":
+        return "insufficient"
     if record is None:
         return "not_run"
     if record.status == "failed" or record.analysis is None:
@@ -109,6 +119,7 @@ def run_evaluation(
     client: LLMClient | None = None,
     threshold: float = RULE_RECOMMEND_THRESHOLD,
     template: str | None = None,
+    save_path: Path | None = None,
 ) -> dict:
     payload = load_cases()
     base_task = payload["task"]
@@ -126,7 +137,7 @@ def run_evaluation(
             record = ai_analyzer.analyze_one(
                 creator, assessment, task, client, template=template
             )
-        ai_decision = decide_by_ai(record)
+        ai_decision = decide_by_rule_plus_ai(record, assessment)
 
         rows.append(
             {
@@ -145,7 +156,7 @@ def run_evaluation(
             }
         )
 
-    return {
+    report = {
         "version": payload.get("version"),
         "case_count": len(rows),
         "label_source": payload.get("label_source"),
@@ -155,6 +166,12 @@ def run_evaluation(
         "rows": rows,
         "summary": _summarize(rows, ai_run=client is not None),
     }
+    if save_path is not None:
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        save_path.write_text(
+            json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    return report
 
 
 def _summarize(rows: list[dict], ai_run: bool) -> dict:
@@ -261,7 +278,7 @@ def main() -> None:
         if client is None:
             raise SystemExit("未配置 DEEPSEEK_API_KEY，无法运行 --ai。")
 
-    report = run_evaluation(client=client)
+    report = run_evaluation(client=client, save_path=PROJECT_ROOT / "runtime" / "eval_last_report.json")
     print(json.dumps(report, ensure_ascii=False, indent=2) if args.json else render_markdown(report))
 
 
