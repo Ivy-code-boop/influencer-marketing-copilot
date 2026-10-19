@@ -51,9 +51,12 @@ git push -u origin main
 DEEPSEEK_API_KEY = "sk-你的真实Key"
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 DEEPSEEK_MODEL = "deepseek-chat"
+AI_MAX_TOP_N = "5"
 ```
 
-保存后应用会自动重启。**不要把这些内容提交到 GitHub**；`.streamlit/secrets.toml` 已在 `.gitignore` 中。
+`AI_MAX_TOP_N` 会把界面上「分析排名前 N 名」的上限锁死（这里设为 5 条），
+即使用户手动调大也超不过这个数。保存后应用会自动重启。
+**不要把这些内容提交到 GitHub**；`.streamlit/secrets.toml` 已在 `.gitignore` 中。
 
 ## 4. 成本闸门（必看）
 
@@ -66,7 +69,7 @@ DEEPSEEK_MODEL = "deepseek-chat"
 
 ## 5. 验收清单
 
-* [ ] 打开公网链接，左上角显示 `版本 0.2.0`
+* [ ] 打开公网链接，左上角显示 `版本 0.3.0`
 * [ ] 加载演示数据 → 运行规则初筛 → 看到 30 条中 24 通过 / 2 需核实 / 4 排除
 * [ ] 第 ④ 步：配了 Key 能跑前 3 到 5 名；没配 Key 显示「未配置」且不报错
 * [ ] 第 ⑤ 步能逐条填写审核状态与备注

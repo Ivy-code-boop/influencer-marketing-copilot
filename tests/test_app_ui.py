@@ -227,6 +227,23 @@ def test_rerunning_rules_clears_previous_ai_results(tmp_path, monkeypatch) -> No
     assert any("已清空" in s.value for s in at.success), [s.value for s in at.success]
 
 
+def test_top_n_is_capped_by_env_for_public_deployment(tmp_path, monkeypatch) -> None:
+    """公网部署时 AI_MAX_TOP_N 必须真的限制住单次分析人数。"""
+    monkeypatch.setenv("AI_MAX_TOP_N", "3")
+    monkeypatch.setattr(ai_analyzer, "RUNTIME_DIR", tmp_path)
+    at = seed_result_state(new_app())
+    client = EchoFakeClient()
+    at.session_state["ai_client_override"] = client
+    at.run()
+    at.sidebar.radio[0].set_value("④ AI 语义分析").run()
+    assert at.number_input[0].value == 3, "默认值应被上限压低"
+    at.checkbox[1].set_value(True).run()
+    at = click_button(at, "运行 AI 分析")
+    assert not at.exception, [e.value for e in at.exception]
+    assert client.calls == 3, f"应只调用 3 次，实际 {client.calls}"
+    assert len(at.session_state["ai_records"]) == 3
+
+
 def test_sidebar_shows_version_so_we_can_tell_which_code_is_running() -> None:
     at = new_app().run()
     captions = " ".join(c.value for c in at.sidebar.caption)

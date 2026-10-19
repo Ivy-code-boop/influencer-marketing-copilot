@@ -51,12 +51,26 @@ def load_cloud_secrets() -> None:
     if not os.path.exists(secrets_file):
         return
     try:
-        for key in ("DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL", "DEEPSEEK_MODEL"):
+        for key in (
+            "DEEPSEEK_API_KEY",
+            "DEEPSEEK_BASE_URL",
+            "DEEPSEEK_MODEL",
+            "AI_MAX_TOP_N",
+        ):
             if key in st.secrets and not os.environ.get(key):
                 os.environ[key] = str(st.secrets[key])
     except Exception:
         # 读取 secrets 失败不应影响规则链路
         return
+
+
+def max_top_n() -> int:
+    """公网部署时用 AI_MAX_TOP_N 限制单次分析人数，避免链接被转发后产生意外费用。"""
+    try:
+        configured = int(os.environ.get("AI_MAX_TOP_N", ai_analyzer.MAX_TOP_N))
+    except ValueError:
+        configured = ai_analyzer.MAX_TOP_N
+    return max(1, min(configured, ai_analyzer.MAX_TOP_N))
 
 
 def init_state() -> None:
@@ -448,8 +462,8 @@ def step_ai() -> None:
         top_n = st.number_input(
             "分析排名前 N 名",
             min_value=1,
-            max_value=ai_analyzer.MAX_TOP_N,
-            value=min(ai_analyzer.DEFAULT_TOP_N, len(qualified)),
+            max_value=max_top_n(),
+            value=min(ai_analyzer.DEFAULT_TOP_N, max_top_n(), len(qualified)),
             step=1,
         )
     with col2:
