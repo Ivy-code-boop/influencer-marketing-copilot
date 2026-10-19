@@ -207,6 +207,26 @@ def test_ai_page_runs_with_injected_test_client(tmp_path, monkeypatch) -> None:
     assert any("AI 分析完成" in s.value for s in at.success)
 
 
+def test_rerunning_rules_clears_previous_ai_results(tmp_path, monkeypatch) -> None:
+    """规则重跑会生成新的 run，旧 AI 结果必须作废，不能当成新结果继续展示。"""
+    monkeypatch.setattr(ai_analyzer, "RUNTIME_DIR", tmp_path)
+    monkeypatch.setattr(snapshot, "RUNS_DIR", tmp_path / "runs")
+    at = seed_result_state(new_app())
+    at.session_state["ai_client_override"] = EchoFakeClient()
+    at.run()
+    at.sidebar.radio[0].set_value("④ AI 语义分析").run()
+    at.number_input[0].set_value(1).run()
+    at.checkbox[1].set_value(True).run()
+    at = click_button(at, "运行 AI 分析")
+    assert at.session_state["ai_records"], "先要产生 AI 结果"
+
+    at.sidebar.radio[0].set_value("③ 规则初筛").run()
+    at = click_button(at, "运行规则初筛")
+    assert not at.exception, [e.value for e in at.exception]
+    assert at.session_state["ai_records"] == {}, "规则重跑后旧 AI 结果必须清空"
+    assert any("已清空" in s.value for s in at.success), [s.value for s in at.success]
+
+
 def test_sidebar_shows_version_so_we_can_tell_which_code_is_running() -> None:
     at = new_app().run()
     captions = " ".join(c.value for c in at.sidebar.caption)

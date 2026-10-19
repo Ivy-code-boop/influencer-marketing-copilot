@@ -1,9 +1,9 @@
-# 运行依赖
-streamlit>=1.40
-pandas>=2.2
-pydantic>=2.7
-python-dotenv>=1.0
-openai>=1.40
+# 运行依赖（锁定版本，保证本地与 Streamlit Cloud 行为一致）
+streamlit==1.65.0
+pandas==3.0.6
+pydantic==2.14.1
+python-dotenv==1.2.4
+openai==3.30.0
 
 # 测试
-pytest>=8.0
+pytest==9.1.1

@@ -42,6 +42,23 @@ st.set_page_config(page_title="AI 海外达人营销助手", layout="wide")
 STEPS = ["① 任务配置", "② 达人数据", "③ 规则初筛", "④ AI 语义分析", "⑤ 人工审核", "⑥ 导出"]
 
 
+def load_cloud_secrets() -> None:
+    """Streamlit Community Cloud 把密钥放在 st.secrets 里，本地则用 .env。
+
+    这里把 secrets 同步到环境变量，让 ai_client 的读取逻辑在两种环境一致。
+    """
+    secrets_file = os.path.join(os.path.dirname(__file__), ".streamlit", "secrets.toml")
+    if not os.path.exists(secrets_file):
+        return
+    try:
+        for key in ("DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL", "DEEPSEEK_MODEL"):
+            if key in st.secrets and not os.environ.get(key):
+                os.environ[key] = str(st.secrets[key])
+    except Exception:
+        # 读取 secrets 失败不应影响规则链路
+        return
+
+
 def init_state() -> None:
     st.session_state.setdefault("task", None)
     st.session_state.setdefault("dataset", None)
@@ -54,16 +71,12 @@ def init_state() -> None:
 
 
 def current_fingerprint() -> dict:
-    task = st.session_state.task
     dataset = st.session_state.dataset
-    config = st.session_state.config
-    return {
-        "data_hash": snapshot.data_hash(dataset.creators) if dataset else None,
-        "task_hash": snapshot.task_hash(task) if task else None,
-        "rule_config_hash": snapshot.rule_config_hash(config),
-        "prompt_version": None,
-        "model_requested": None,
-    }
+    return snapshot.current_fingerprint(
+        dataset.creators if dataset else None,
+        st.session_state.task,
+        st.session_state.config,
+    )
 
 
 def render_sidebar() -> str:
@@ -283,10 +296,15 @@ def step_rules() -> None:
         run_dir = snapshot.write_run(meta, rule_rows=rows, decisions={
             cid: d.model_dump() for cid, d in st.session_state.decisions.items()
         })
+        had_ai = bool(st.session_state.get("ai_records"))
+        st.session_state["ai_records"] = {}
         st.session_state.assessments = assessments
         st.session_state.run_meta = meta
         st.session_state.last_run_meta = snapshot.read_run(run_dir)
-        st.session_state["rules_flash"] = f"规则初筛完成，快照已写入 runtime/runs/{run_id}"
+        flash = f"规则初筛完成，快照已写入 runtime/runs/{run_id}"
+        if had_ai:
+            flash += "。之前的 AI 结果属于上一次运行，已清空，需要时请重新分析"
+        st.session_state["rules_flash"] = flash
         st.rerun()
 
     rules_flash = st.session_state.pop("rules_flash", None)
@@ -402,6 +420,21 @@ def step_ai() -> None:
         client = env_client
         st.info(f"已检测到 API Key，模型：{client.model}")
 
+    run_meta = st.session_state.run_meta or {}
+    ai_fingerprint = snapshot.current_fingerprint(
+        dataset.creators,
+        task,
+        st.session_state.config,
+        prompt_version=ai_analyzer.PROMPT_VERSION,
+        model=getattr(client, "model", None),
+    )
+    ai_stale = snapshot.staleness_reasons(run_meta, ai_fingerprint)
+    if ai_stale and st.session_state.get("ai_records"):
+        st.error(
+            "当前配置与这份 AI 结果不一致，结果已过期，不能当作最新分析使用：\n\n- "
+            + "\n- ".join(ai_stale)
+        )
+
     qualified = [a for a in assessments if a.group == "qualified"]
     if not qualified:
         st.warning("没有通过硬性条件的候选，AI 环节没有可分析对象。")
@@ -467,6 +500,7 @@ def step_ai() -> None:
                     ),
                     "analysis_top_n": int(top_n),
                     "ai_run_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+                    "ai_enabled": True,
                 }
             )
             run_dir.mkdir(parents=True, exist_ok=True)
@@ -770,9 +804,20 @@ def step_export() -> None:
         dataset.creators,
         st.session_state.decisions,
         st.session_state.get("ai_records") or {},
+        result_is_stale=bool(snapshot.staleness_reasons(meta, current_fingerprint())),
     )
     csv_text = export_service.rows_to_csv_text(rows)
-    export_meta = export_service.build_export_meta(meta, rows)
+    export_meta = export_service.build_export_meta(
+        {**meta, "staleness_reasons": snapshot.staleness_reasons(meta, current_fingerprint())},
+        rows,
+    )
+
+    stale_reasons = snapshot.staleness_reasons(meta, current_fingerprint())
+    if stale_reasons:
+        st.error(
+            "这份结果已过期（导出文件会标注 result_is_stale=是）：\n\n- "
+            + "\n- ".join(stale_reasons)
+        )
 
     st.caption(
         "导出包含全部记录（含无法判定与信息不足），并附带元数据文件说明数据来源、时间与版本。"
@@ -800,6 +845,7 @@ def step_export() -> None:
 
 
 def main() -> None:
+    load_cloud_secrets()
     init_state()
     step = render_sidebar()
     if step == STEPS[0]:

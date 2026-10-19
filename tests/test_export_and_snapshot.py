@@ -165,3 +165,66 @@ def test_data_hash_is_stable_and_sensitive() -> None:
     assert snapshot.data_hash(creators) == snapshot.data_hash(list(creators))
     changed = [make_creator(creator_id="a", follower_count=123), make_creator(creator_id="b")]
     assert snapshot.data_hash(creators) != snapshot.data_hash(changed)
+
+
+def test_staleness_ignores_prompt_and_model_when_ai_never_ran() -> None:
+    creators, _ = sample_assessments()
+    meta = snapshot.build_meta(
+        run_id="r1",
+        task=make_task(),
+        config=RuleConfig(),
+        creators=creators,
+        dataset_source="demo",
+        data_origin="demo",
+    )
+    assert meta["ai_enabled"] is False
+    current = snapshot.current_fingerprint(
+        creators, make_task(), RuleConfig(), prompt_version="creator_analysis_v1", model="deepseek-chat"
+    )
+    assert snapshot.staleness_reasons(meta, current) == [], "没跑过 AI 的快照不应因 Prompt/模型误报过期"
+
+
+def test_staleness_reports_prompt_and_model_after_ai_ran() -> None:
+    creators, _ = sample_assessments()
+    meta = snapshot.build_meta(
+        run_id="r1",
+        task=make_task(),
+        config=RuleConfig(),
+        creators=creators,
+        dataset_source="demo",
+        data_origin="demo",
+        prompt_version="creator_analysis_v1",
+        model_requested="deepseek-chat",
+    )
+    meta["ai_enabled"] = True
+    current = snapshot.current_fingerprint(
+        creators, make_task(), RuleConfig(), prompt_version="creator_analysis_v2", model="deepseek-chat"
+    )
+    reasons = snapshot.staleness_reasons(meta, current)
+    assert any("Prompt 版本不同" in r for r in reasons)
+
+    current2 = snapshot.current_fingerprint(
+        creators, make_task(), RuleConfig(), prompt_version="creator_analysis_v1", model="other-model"
+    )
+    assert any("使用的模型不同" in r for r in snapshot.staleness_reasons(meta, current2))
+
+
+def test_export_marks_stale_results() -> None:
+    creators, assessments = sample_assessments()
+    rows = export_service.build_export_rows(
+        assessments, creators, {}, None, result_is_stale=True
+    )
+    assert all(r["result_is_stale"] == "是" for r in rows)
+    meta = snapshot.build_meta(
+        run_id="r1",
+        task=make_task(),
+        config=RuleConfig(),
+        creators=creators,
+        dataset_source="demo",
+        data_origin="demo",
+    )
+    export_meta = export_service.build_export_meta(
+        {**meta, "staleness_reasons": ["达人数据已变化"]}, rows
+    )
+    assert export_meta["result_is_stale"] is True
+    assert export_meta["staleness_reasons"] == ["达人数据已变化"]

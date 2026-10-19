@@ -73,6 +73,7 @@ def build_export_rows(
     creators: list[CreatorRecord],
     decisions: dict[str, ReviewDecision],
     ai_records: dict[str, AIAnalysisRecord] | None = None,
+    result_is_stale: bool = False,
 ) -> list[dict]:
     by_id = {c.creator_id: c for c in creators}
     ai_map = ai_records or {}
@@ -104,6 +105,7 @@ def build_export_rows(
                 **ai_columns(ai_map.get(a.creator_id)),
                 "review_status": REVIEW_STATUS_LABELS[decision.status],
                 "review_note": decision.note,
+                "result_is_stale": "是" if result_is_stale else "否",
             }
         )
     return rows
@@ -122,6 +124,8 @@ def rows_to_csv_text(rows: list[dict]) -> str:
 def build_export_meta(meta: dict, rows: list[dict]) -> dict:
     return {
         "exported_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "result_is_stale": any(r.get("result_is_stale") == "是" for r in rows),
+        "staleness_reasons": meta.get("staleness_reasons", []),
         "run_id": meta.get("run_id"),
         "analyzed_at": meta.get("created_at"),
         "app_version": meta.get("app_version"),

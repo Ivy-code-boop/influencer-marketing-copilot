@@ -152,7 +152,28 @@ def staleness_reasons(meta: dict, current: dict) -> list[str]:
         "prompt_version": "Prompt 版本不同",
         "model_requested": "使用的模型不同",
     }
+    # 没跑过 AI 的快照不比较 Prompt / 模型，否则会误报「已过期」
+    if not meta.get("ai_enabled"):
+        labels.pop("prompt_version", None)
+        labels.pop("model_requested", None)
     for key, label in labels.items():
         if meta.get(key) != current.get(key):
             reasons.append(f"{label}（快照 {meta.get(key)} → 当前 {current.get(key)}）")
     return reasons
+
+
+def current_fingerprint(
+    creators: list[CreatorRecord] | None,
+    task: MarketingTask | None,
+    config: RuleConfig,
+    prompt_version: str | None = None,
+    model: str | None = None,
+) -> dict:
+    """当前配置的指纹，用于和快照比对是否过期。"""
+    return {
+        "data_hash": data_hash(creators) if creators else None,
+        "task_hash": task_hash(task) if task else None,
+        "rule_config_hash": rule_config_hash(config),
+        "prompt_version": prompt_version,
+        "model_requested": model,
+    }
