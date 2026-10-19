@@ -1,0 +1,195 @@
+{
+  "version": "eval_v1",
+  "label_source": "案例与参考标签由 AI 起草，属于项目内假设标签，需人工逐条确认后才能作为评估基准",
+  "task": {
+    "product_name": "便携电动奶泡杯",
+    "product_pitch": "USB 充电、30 秒打出冷热奶泡，适合租房小厨房与通勤咖啡场景",
+    "target_market": "德国",
+    "target_platform": "TikTok",
+    "marketing_goal": "content_seeding",
+    "target_audience": "20-35 岁城市上班族",
+    "min_follower_count": 10000,
+    "required_language": "德语"
+  },
+  "cases": [
+    {
+      "case_id": "E01",
+      "focus": "产品与达人内容高度相关",
+      "expected": "recommend",
+      "reference_note": "德国德语达人，内容就是租房咖啡角与奶泡教程，与产品卖点和使用场景直接对应",
+      "creator": {
+        "creator_id": "E01_de_cafe", "creator_name": "评估-德国咖啡角", "platform": "TikTok",
+        "market": "德国", "language": "德语", "follower_count": 24000, "average_views": 30000,
+        "likes": 1800, "comments": 120, "engagement_rate": 0.028,
+        "content_categories": ["咖啡", "家用小家电"],
+        "recent_content_summary": "租房咖啡角与奶泡教程",
+        "sample_content_text": "30 秒手打奶泡 小厨房也能做拿铁",
+        "audience_description": "20-35 岁城市租房上班族",
+        "collaboration_history": "与厨房小家电品牌做过产品置换"
+      }
+    },
+    {
+      "case_id": "E02",
+      "focus": "表面相关但目标不匹配",
+      "expected": "not_recommend",
+      "reference_note": "内容是咖啡馆探店，虽然同属咖啡领域，但不能展示产品使用场景，不适合内容种草",
+      "creator": {
+        "creator_id": "E02_de_store", "creator_name": "评估-柏林探店", "platform": "TikTok",
+        "market": "德国", "language": "德语", "follower_count": 38000, "average_views": 45000,
+        "likes": 2400, "comments": 160, "engagement_rate": 0.024,
+        "content_categories": ["咖啡探店"],
+        "recent_content_summary": "柏林咖啡馆探店与排队攻略",
+        "sample_content_text": "本周打卡三家精品咖啡馆",
+        "audience_description": "25-40 岁咖啡爱好者",
+        "collaboration_history": "与咖啡馆有过团购合作"
+      }
+    },
+    {
+      "case_id": "E03",
+      "focus": "内容相关但目标市场不匹配",
+      "expected": "not_recommend",
+      "reference_note": "内容与产品高度相关，但达人是西班牙市场、西语内容，不满足德语要求",
+      "creator": {
+        "creator_id": "E03_es_cafe", "creator_name": "评估-西班牙咖啡", "platform": "TikTok",
+        "market": "西班牙", "language": "西班牙语", "follower_count": 52000, "average_views": 60000,
+        "likes": 3200, "comments": 210, "engagement_rate": 0.026,
+        "content_categories": ["咖啡"],
+        "recent_content_summary": "马德里家庭咖啡与奶泡教程",
+        "sample_content_text": "在家打出一杯绵密奶泡",
+        "audience_description": "20-35 岁城市咖啡爱好者"
+      }
+    },
+    {
+      "case_id": "E04",
+      "focus": "数据不足，不能可靠判断",
+      "expected": "insufficient",
+      "reference_note": "只有基础字段，缺粉丝量与内容信息，硬性条件无法判定，也不应进入排序",
+      "creator": {
+        "creator_id": "E04_sparse", "creator_name": "评估-信息缺失", "platform": "TikTok",
+        "market": "德国", "language": "德语",
+        "content_categories": ["咖啡"]
+      }
+    },
+    {
+      "case_id": "E05",
+      "focus": "存在可能影响合作的内容风险",
+      "expected": "not_recommend",
+      "reference_note": "猎奇挑战类内容，数据表现好但存在品牌安全风险，不适合作为种草合作对象",
+      "creator": {
+        "creator_id": "E05_de_bold", "creator_name": "评估-猎奇挑战", "platform": "TikTok",
+        "market": "德国", "language": "德语", "follower_count": 68000, "average_views": 95000,
+        "likes": 8800, "comments": 900, "engagement_rate": 0.048,
+        "content_categories": ["咖啡", "挑战"],
+        "recent_content_summary": "咖啡因极限挑战与猎奇实验",
+        "sample_content_text": "一口气喝完十杯浓缩的挑战",
+        "audience_description": "18-25 岁年轻用户"
+      }
+    },
+    {
+      "case_id": "E06",
+      "focus": "内容领域相关但营销目标不一致",
+      "expected": "not_recommend",
+      "reference_note": "咖啡题材的搞笑整活内容，适合娱乐曝光，但难以承载产品教育与种草信息",
+      "creator": {
+        "creator_id": "E06_de_fun", "creator_name": "评估-咖啡整活", "platform": "TikTok",
+        "market": "德国", "language": "德语", "follower_count": 33000, "average_views": 41000,
+        "likes": 2600, "comments": 300, "engagement_rate": 0.035,
+        "content_categories": ["咖啡", "搞笑"],
+        "recent_content_summary": "咖啡段子与整活视频",
+        "sample_content_text": "用咖啡机做奶茶的整活挑战",
+        "audience_description": "18-30 岁泛娱乐用户"
+      }
+    },
+    {
+      "case_id": "E07",
+      "focus": "基础指标表现较好但语义匹配较差",
+      "expected": "not_recommend",
+      "reference_note": "美妆达人数据漂亮，但内容与咖啡奶泡杯无关，属于典型的指标好、语义差",
+      "creator": {
+        "creator_id": "E07_de_beauty", "creator_name": "评估-美妆大号", "platform": "TikTok",
+        "market": "德国", "language": "德语", "follower_count": 210000, "average_views": 260000,
+        "likes": 9100, "comments": 520, "engagement_rate": 0.035,
+        "content_categories": ["美妆"],
+        "recent_content_summary": "通勤妆容与护肤流程",
+        "sample_content_text": "十五分钟完成通勤妆",
+        "audience_description": "20-35 岁城市女性"
+      }
+    },
+    {
+      "case_id": "E08",
+      "focus": "基础指标一般但内容与目标高度相关",
+      "expected": "recommend",
+      "reference_note": "小体量达人，互动一般，但内容精准命中租房咖啡角与奶泡场景，值得人工评估",
+      "creator": {
+        "creator_id": "E08_de_small", "creator_name": "评估-小体量奶泡", "platform": "TikTok",
+        "market": "德国", "language": "德语", "follower_count": 13000, "average_views": 16000,
+        "likes": 900, "comments": 60, "engagement_rate": 0.008,
+        "content_categories": ["咖啡", "租房生活"],
+        "recent_content_summary": "小厨房奶泡技巧与咖啡角布置",
+        "sample_content_text": "一平米咖啡角 手打奶泡",
+        "audience_description": "20-32 岁租房上班族"
+      }
+    },
+    {
+      "case_id": "E09",
+      "focus": "关键字段缺失导致无法判定",
+      "expected": "insufficient",
+      "reference_note": "内容与产品匹配，但语言字段缺失，无法确认是否满足德语要求",
+      "creator": {
+        "creator_id": "E09_de_nolang", "creator_name": "评估-缺语言", "platform": "TikTok",
+        "market": "德国", "follower_count": 30000, "average_views": 36000,
+        "likes": 2100, "comments": 140, "engagement_rate": 0.026,
+        "content_categories": ["咖啡"],
+        "recent_content_summary": "家庭咖啡角与奶泡教程",
+        "sample_content_text": "三十秒打出绵密奶泡",
+        "audience_description": "20-35 岁城市上班族"
+      }
+    },
+    {
+      "case_id": "E10",
+      "focus": "粉丝量缺失，硬性条件无法判定",
+      "expected": "insufficient",
+      "reference_note": "内容匹配，但缺粉丝量，无法确认是否达到最低门槛，应人工核实而不是直接淘汰",
+      "creator": {
+        "creator_id": "E10_de_nofans", "creator_name": "评估-缺粉丝量", "platform": "TikTok",
+        "market": "德国", "language": "德语", "average_views": 28000,
+        "likes": 1600, "comments": 100, "engagement_rate": 0.027,
+        "content_categories": ["咖啡"],
+        "recent_content_summary": "租房咖啡角日常",
+        "sample_content_text": "小厨房里的奶泡实验",
+        "audience_description": "20-35 岁城市租房人群"
+      }
+    },
+    {
+      "case_id": "E11",
+      "focus": "平台不匹配",
+      "expected": "not_recommend",
+      "reference_note": "内容与市场都匹配，但平台是 YouTube，与本次 TikTok 投放不匹配",
+      "creator": {
+        "creator_id": "E11_de_yt", "creator_name": "评估-油管咖啡", "platform": "YouTube",
+        "market": "德国", "language": "德语", "follower_count": 45000, "average_views": 52000,
+        "likes": 2800, "comments": 180, "engagement_rate": 0.025,
+        "content_categories": ["咖啡"],
+        "recent_content_summary": "长视频咖啡设备讲解",
+        "sample_content_text": "十分钟讲清奶泡机原理",
+        "audience_description": "25-45 岁咖啡设备爱好者"
+      }
+    },
+    {
+      "case_id": "E12",
+      "focus": "产品与达人内容高度相关（第二条）",
+      "expected": "recommend",
+      "reference_note": "德国德语达人，近期内容就是在家做拿铁，受众为城市上班族，合作条件匹配",
+      "creator": {
+        "creator_id": "E12_de_latte", "creator_name": "评估-在家拿铁", "platform": "TikTok",
+        "market": "德国", "language": "德语", "follower_count": 41000, "average_views": 50000,
+        "likes": 3000, "comments": 200, "engagement_rate": 0.024,
+        "content_categories": ["咖啡", "早餐"],
+        "recent_content_summary": "在家做拿铁与早餐搭配",
+        "sample_content_text": "跟着我做一杯不塌的冰拿铁",
+        "audience_description": "20-35 岁城市上班族",
+        "collaboration_history": "与烘焙品牌有过产品置换"
+      }
+    }
+  ]
+}
