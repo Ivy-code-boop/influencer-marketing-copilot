@@ -33,9 +33,9 @@ html, body, [class*="css"] {
 
 /* ---------- 页面骨架：最大宽度 1100px 居中 ---------- */
 .block-container {
-  max-width: 1100px;
+  max-width: 1160px;
   margin: 0 auto;
-  padding: 2.2rem 2rem 4rem;
+  padding: 4rem 2.5rem 4rem;
 }
 [data-testid="stSidebar"] .block-container {
   max-width: none;
@@ -157,5 +157,65 @@ hr { border-color: var(--imc-border); opacity: .9; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: #D7DAE3; border-radius: 999px; }
 ::-webkit-scrollbar-thumb:hover { background: #C4C8D4; }
+
+/* ---------- 顶部产品栏 ---------- */
+.imc-product-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; padding: 0 2px 14px; margin-bottom: 16px;
+  border-bottom: 1px solid var(--imc-border);
+}
+.imc-brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.imc-logo {
+  width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0;
+  background: linear-gradient(135deg, var(--imc-primary), var(--imc-primary-2));
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 8px rgba(79, 70, 229, .28);
+}
+.imc-brand-text { min-width: 0; }
+.imc-product-name {
+  font-size: 15px; font-weight: 700; line-height: 1.25; letter-spacing: -.01em;
+  color: var(--imc-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.imc-product-tagline { font-size: 12px; line-height: 1.3; color: #94A3B8; }
+.imc-bar-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+/* ---------- 状态胶囊 ---------- */
+.imc-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 999px;
+  font-size: 12px; font-weight: 500; line-height: 1.5; white-space: nowrap;
+  background: #F1F3F7; color: #475569; border: 1px solid transparent;
+}
+.imc-chip-neutral { background: #F1F3F7; color: #475569; }
+.imc-chip-success { background: #ECFDF5; color: #0E9F6E; }
+.imc-chip-warning { background: #FFFBEB; color: #B45309; }
+.imc-chip-danger  { background: #FEF2F2; color: #DC2626; }
+.imc-chip-ai      { background: #F5F3FF; color: #6D28D9; }
+
+/* ---------- 运行状态条 ---------- */
+.imc-runbar {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  padding: 10px 12px; margin-bottom: 20px;
+  background: var(--imc-surface); border: 1px solid var(--imc-border);
+  border-radius: var(--imc-radius-card); box-shadow: var(--imc-shadow);
+}
+.imc-runbar-stale { background: #FFFBEB; border-color: #FDE68A; }
+.imc-runbar-label { font-size: 12px; font-weight: 600; color: var(--imc-muted); margin-right: 2px; }
+.imc-runbar-reason { font-size: 12px; color: #B45309; margin-left: 2px; }
+
+/* ---------- 侧边栏进度 ---------- */
+.imc-side-progress { padding: 2px 2px 12px; }
+.imc-side-progress-row {
+  display: flex; justify-content: space-between;
+  font-size: 12px; font-weight: 600; color: var(--imc-muted); margin-bottom: 7px;
+}
+.imc-side-progress-track {
+  height: 4px; border-radius: 999px; overflow: hidden; background: #EEF0F5;
+}
+.imc-side-progress-fill {
+  height: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, var(--imc-primary), var(--imc-primary-2));
+  transition: width .3s ease;
+}
 </style>
 """

@@ -25,7 +25,7 @@ def test_theme_config_has_required_tokens() -> None:
 def test_css_covers_requested_rules() -> None:
     css = GLOBAL_CSS
     # 布局
-    assert "max-width: 1100px" in css
+    assert "max-width: 1160px" in css
     assert "margin: 0 auto" in css
     # 圆角
     assert "--imc-radius-card: 12px" in css

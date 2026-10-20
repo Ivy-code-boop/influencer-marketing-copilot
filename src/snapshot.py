@@ -15,7 +15,7 @@ from pathlib import Path
 from .models import CreatorRecord, MarketingTask, RuleConfig
 
 # 每次界面/行为有可见变化就+1，方便确认浏览器里跑的是不是最新代码
-APP_VERSION = "0.4.0"
+APP_VERSION = "0.5.0"
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 RUNTIME_DIR = PROJECT_ROOT / "runtime"
 RUNS_DIR = RUNTIME_DIR / "runs"

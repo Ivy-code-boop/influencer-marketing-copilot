@@ -41,6 +41,7 @@ from src.models import (
     ReviewDecision,
     RuleConfig,
 )
+from ui import components
 from ui.styles import GLOBAL_CSS
 
 st.set_page_config(page_title="AI 海外达人营销助手", layout="wide")
@@ -101,30 +102,117 @@ def current_fingerprint() -> dict:
     )
 
 
+def completed_steps() -> int:
+    """用于侧边栏进度条：完成了几步（纯展示，不改动任何业务状态）。"""
+    done = 0
+    if st.session_state.get("task"):
+        done += 1
+    if st.session_state.get("dataset"):
+        done += 1
+    if st.session_state.get("assessments"):
+        done += 1
+    if st.session_state.get("ai_records"):
+        done += 1
+    decisions = st.session_state.get("decisions") or {}
+    if any(d.status != "pending" for d in decisions.values()):
+        done += 1
+    return done
+
+
 def render_sidebar() -> str:
-    st.sidebar.title("AI 海外达人营销助手")
-    st.sidebar.caption(
-        f"版本 {snapshot.APP_VERSION} · Phase 1：规则链路端到端（未接入 API 也能跑）"
+    current = st.session_state.get("nav", STEPS[0])
+    current_index = STEPS.index(current) + 1 if current in STEPS else 1
+    st.sidebar.markdown(
+        components.side_progress(current_index, len(STEPS), completed_steps()),
+        unsafe_allow_html=True,
     )
-    step = st.sidebar.radio("流程", STEPS)
+    step = st.sidebar.radio("流程", STEPS, key="nav", label_visibility="collapsed")
     st.sidebar.divider()
-    if st.sidebar.button("清空当前会话"):
+
+    confirm_clear = st.sidebar.checkbox("确认清空当前会话", value=False)
+    if st.sidebar.button("清空当前会话", disabled=not confirm_clear):
         for key in ("task", "dataset", "assessments", "decisions", "run_meta", "last_run_meta"):
             st.session_state.pop(key, None)
         st.rerun()
-    with st.sidebar.expander("关于规则权重", expanded=False):
-        st.write(st.session_state.config.weights_note)
+
+    with st.sidebar.popover("运行详情", width="stretch"):
+        st.caption("规则权重（项目初始假设，可在规则页调整）")
         st.json(st.session_state.config.weights)
-    with st.sidebar.expander("历史运行快照", expanded=False):
+        st.caption("历史运行快照")
         runs = snapshot.list_runs()
         if not runs:
             st.caption("还没有运行记录。")
         for run in reversed(runs[-8:]):
             st.caption(
                 f"{run.get('run_id')} · 数据 {run.get('data_row_count')} 条 · "
-                f"data_hash {run.get('data_hash')} · 规则 {run.get('rule_version')}"
+                f"规则 {run.get('rule_version')} · data_hash {run.get('data_hash')}"
             )
+    st.sidebar.caption(f"版本 {snapshot.APP_VERSION} · 视觉基础层")
     return step
+
+
+def render_shell() -> None:
+    """全局骨架：产品栏 + 运行状态条（纯展示层）。"""
+    st.markdown(
+        components.product_bar(
+            "AI 海外达人营销助手",
+            "规则初筛 · AI 语义分析 · 人工决策",
+            [("规则 v1", "neutral"), ("Prompt v1", "ai")],
+        ),
+        unsafe_allow_html=True,
+    )
+
+    dataset = st.session_state.get("dataset")
+    task = st.session_state.get("task")
+    assessments = st.session_state.get("assessments")
+    meta = st.session_state.get("run_meta") or {}
+    counts = rule_engine.summarize_assessments(assessments) if assessments else None
+    model = st.session_state.get("ai_model_in_use") or os.environ.get("DEEPSEEK_MODEL")
+
+    chips: list[tuple[str, str, str | None]] = [
+        (
+            f"数据 {len(dataset.creators)} 条" if dataset else "数据 未加载",
+            "success" if dataset else "neutral",
+            snapshot.data_hash(dataset.creators) if dataset else None,
+        ),
+        (
+            f"任务 {task.product_name[:14]}" if task else "任务 未配置",
+            "success" if task else "neutral",
+            snapshot.task_hash(task) if task else None,
+        ),
+        (
+            f"规则 {st.session_state.config.version} · {counts['qualified']} 通过"
+            if counts
+            else f"规则 {st.session_state.config.version}",
+            "neutral",
+            snapshot.rule_config_hash(st.session_state.config),
+        ),
+        (
+            f"Prompt {ai_analyzer.PROMPT_VERSION}",
+            "ai" if st.session_state.get("ai_records") else "neutral",
+            None,
+        ),
+        (
+            f"模型 {model}" if model else "模型 未配置",
+            "neutral" if model else "warning",
+            None,
+        ),
+    ]
+
+    if meta:
+        stale = snapshot.staleness_reasons(meta, current_fingerprint())
+        status = ("已过期", "warning") if stale else ("最新", "success")
+        reasons = stale
+    elif assessments:
+        status = ("未保存快照", "neutral")
+        reasons = []
+    else:
+        status = ("未运行", "neutral")
+        reasons = []
+    st.markdown(
+        components.run_status_bar(chips, status[0], status[1], reasons),
+        unsafe_allow_html=True,
+    )
 
 
 def step_task() -> None:
@@ -873,6 +961,7 @@ def main() -> None:
     st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
     init_state()
     step = render_sidebar()
+    render_shell()
     if step == STEPS[0]:
         step_task()
     elif step == STEPS[1]:
